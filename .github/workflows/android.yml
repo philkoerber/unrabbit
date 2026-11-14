@@ -1,0 +1,45 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+      - name: Install Android build packages
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+      - name: Test, build and lint
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+      - name: Check setup QR generator
+        working-directory: .
+        run: |
+          python3 -m venv .venv-setup
+          .venv-setup/bin/pip install -r scripts/requirements-setup.txt
+          .venv-setup/bin/python scripts/setup_qr.py --host vm.example.net --port 2222 --user unrabbit --output "$RUNNER_TEMP/unrabbit-setup.png"
+      - name: Upload development APK
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: unrabbit-dev
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14

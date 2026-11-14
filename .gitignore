@@ -1,0 +1,37 @@
+# Local development, device state and private project notes
+/private/
+/tmp/
+/output/
+/design/
+/AGENTS.md
+/PLAN.md
+/android/QA.md
+/scripts/check_setup.py
+/.t3/
+/.codex/
+/unrabbit-setup.png
+
+# Credentials and machine configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*.jks
+*.keystore
+
+# Generated files
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/**/build/
+android/.idea/
+*.iml
+.venv-setup/

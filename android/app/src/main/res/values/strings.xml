@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Unrabbit Dev</string>
+    <string name="scan_hint">Einrichtungs-QR scannen</string>
+    <string name="scan_invalid">Kein gültiger Unrabbit-QR.</string>
+    <string name="scan_camera_unavailable">Kamera nicht verfügbar.</string>
+    <string name="photo_unavailable">Foto nicht verfügbar</string>
+</resources>
