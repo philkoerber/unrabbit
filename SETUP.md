@@ -6,13 +6,13 @@ Start in an Android emulator. The app is a local development prototype; a tested
 
 You need Git, JDK 17 or 21 (21 is used in CI), and the Android SDK command-line tools or Android Studio.
 
+Set `ANDROID_HOME` to your SDK directory. Add `$ANDROID_HOME/cmdline-tools/latest/bin` and `$ANDROID_HOME/platform-tools` to your `PATH` so the commands below can find `sdkmanager`, `avdmanager` and `adb`.
+
 ```sh
 git clone https://github.com/philkoerber/unrabbit.git
 cd unrabbit
 sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
 ```
-
-Set `ANDROID_HOME` to your SDK directory, or create an untracked `android/local.properties` containing `sdk.dir=/path/to/android-sdk`.
 
 ```sh
 cd android

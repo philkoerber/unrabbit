@@ -28,7 +28,7 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
       - name: Install Android build packages
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"'
       - name: Test, build and lint
         run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
       - name: Check setup QR generator
