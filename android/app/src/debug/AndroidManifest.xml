@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Allows the emulator administrator to remove device ownership without resetting data. -->
-    <application android:testOnly="true" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:testOnly="true" android:networkSecurityConfig="@xml/local_network_security" />
 </manifest>

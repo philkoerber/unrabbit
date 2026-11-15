@@ -9,17 +9,24 @@ android {
         applicationId = "dev.unrabbit.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.8.0-dev"
+        versionCode = 19
+        versionName = "0.10.0-dev"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
-    testOptions { unitTests.isIncludeAndroidResources = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperty("unrabbit.repo", rootProject.projectDir.parentFile.absolutePath)
+            it.systemProperty("unrabbit.testPython", System.getenv("UNRABBIT_TEST_PYTHON") ?: "")
+        }
+    }
     lint { abortOnError = true }
 }
 dependencies {
     implementation(project(":core"))
+    implementation("com.github.mwiede:jsch:2.28.8")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     // Keep the verified SDK-35 camera stack pinned; upgrading it is a separate compatibility check.
     implementation("androidx.camera:camera-camera2:1.4.2")

@@ -8,9 +8,7 @@ One conversation, one moving mark. Most interaction happens through the wheel an
 - Battery, clock and Wi-Fi move from a horizontal rest-screen row into a narrow vertical rail at the top left.
 - Menus are vertical. Selection is orange. Transitions are short crossfades, not separate screens full of instructions.
 - Both cameras fill the display with a small touch-only X at the top right. The photo camera uses the side button as a shutter; the setup scanner recognizes QR codes automatically.
-- Setup has no text input. A QR supplies connection details; the SSH port also has a vertical number wheel.
-
-<img src="assets/port.png" width="200" alt="The orange SSH port number between the previous and next values">
+- Setup has one connection action: scan the VM wizard’s QR. Pairing and verification are automatic; no manual connection fields, port wheel or save button.
 
 IBM Plex Sans provides the type. The logo uses compatible paths for continuous morphing. Quiet motion is capped at roughly 12 updates per second, active states at roughly 30; hidden animation pauses and disabled system animations are respected.
 

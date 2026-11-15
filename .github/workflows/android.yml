@@ -1,4 +1,4 @@
-name: Android
+name: Checks
 
 on:
   push:
@@ -14,6 +14,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  vm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install terminal setup dependencies
+        run: |
+          python3 -m venv .venv-setup
+          .venv-setup/bin/pip install -r scripts/requirements-setup.txt
+      - name: Test VM service without model credentials
+        run: |
+          PYTHONPATH=vm .venv-setup/bin/python -m unittest discover -s vm/tests -v
+          python3 -m unittest discover -s scripts/tests -v
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -29,14 +42,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
       - name: Install Android build packages
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"'
-      - name: Test, build and lint
-        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
-      - name: Check setup QR generator
+      - name: Install SSH integration test dependencies
         working-directory: .
         run: |
           python3 -m venv .venv-setup
           .venv-setup/bin/pip install -r scripts/requirements-setup.txt
-          .venv-setup/bin/python scripts/setup_qr.py --host vm.example.net --port 2222 --user unrabbit --output "$RUNNER_TEMP/unrabbit-setup.png"
+      - name: Test, build and lint
+        env:
+          UNRABBIT_TEST_PYTHON: ${{ github.workspace }}/.venv-setup/bin/python
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:assembleRelease
       - name: Upload development APK
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

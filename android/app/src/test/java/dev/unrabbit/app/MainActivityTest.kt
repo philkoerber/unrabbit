@@ -255,7 +255,7 @@ class MainActivityTest {
         tap(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
         assertEquals(2, LocalStorage(activity).load()!!.messages.size)
-        assertTrue(views(activity).filterIsInstance<TextView>().any { it.text == "Demo angehalten." })
+        assertTrue(views(activity).filterIsInstance<TextView>().any { it.text == "Angehalten." })
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         up(activity)
@@ -270,13 +270,12 @@ class MainActivityTest {
         click(activity, "Demo öffnen"); openSettings(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(350))
         val panel = views(activity).filterIsInstance<SettingsView>().single()
-        val rows = panel.navigation.take(4).map { it.first }
+        val rows = panel.navigation.map { it.first }
         assertTrue(rows.zipWithNext().all { (a, b) -> a.bottom <= b.top })
         val icons = views(activity).filterIsInstance<MenuIconView>()
         val cancel = icons.single { it.icon == MenuIcon.CLOSE }
-        val save = icons.single { it.icon == MenuIcon.SAVE }
-        assertEquals(cancel.left, save.left)
-        assertTrue(cancel.bottom <= save.top)
+        assertEquals(2, panel.navigation.size)
+        assertTrue(icons.none { it.icon == MenuIcon.SAVE })
         assertTrue(views(activity).none { it is EditText })
         shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
         tap(activity) // VM address directly opens the scanner.
@@ -384,63 +383,22 @@ class MainActivityTest {
         controller.pause().stop().destroy()
     }
 
-    @Test fun scannedConnectionAndWheelPortSaveOnlyOnConfirmationWithoutRecording() {
+    @Test fun settingsHaveNoManualFieldsAndClosingKeepsChat() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
         click(activity, "Demo öffnen"); openSettings(activity)
         val panel = views(activity).filterIsInstance<SettingsView>().single()
-        val storage = LocalStorage(activity)
-        panel.applyScan(dev.unrabbit.core.ConnectionSettings("vm.example.net", 2222, "device"))
-        assertEquals("", storage.connection().host)
-        tap(activity, KeyEvent.KEYCODE_DPAD_DOWN); tap(activity)
-        assertEquals(2222, views(activity).filterIsInstance<PortWheelView>().single().value)
-        tap(activity, KeyEvent.KEYCODE_DPAD_DOWN)
-        down(activity)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
-        up(activity) // A long button press in the wheel still confirms, never records.
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(350))
-        assertTrue(views(activity).none { it is PortWheelView || it is EditText })
-        assertEquals("2223", views(activity).filterIsInstance<TextView>().single { it.tag == "vm-port" }.text.toString())
-        assertEquals("", storage.connection().host)
-        repeat(4) { tap(activity, KeyEvent.KEYCODE_DPAD_DOWN) }
-        tap(activity)
-        assertTrue(views(activity).none { it is SettingsView })
-        assertEquals("vm.example.net", storage.connection().host)
-        assertEquals(2223, storage.connection().port)
-        assertEquals("device", storage.connection().user)
-        controller.pause().stop().destroy()
-        assertTrue(storage.load()!!.messages.isEmpty())
-    }
-
-    @Test fun portWheelIsBoundedAndCancelDiscardsScannedConnectionAndNumberChanges() {
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
-        val activity = controller.get()
-        click(activity, "Demo öffnen"); openSettings(activity)
-        val panel = views(activity).filterIsInstance<SettingsView>().single()
-        assertThrows(IllegalArgumentException::class.java) {
-            panel.applyScan(dev.unrabbit.core.ConnectionSettings("vm.example.net", 0, "device"))
-        }
-        panel.applyScan(dev.unrabbit.core.ConnectionSettings("other.example.net", 65535, "device", "SHA256:" + "A".repeat(43)))
-        tap(activity, KeyEvent.KEYCODE_DPAD_DOWN); tap(activity)
-        tap(activity, KeyEvent.KEYCODE_DPAD_DOWN)
-        assertEquals(65535, views(activity).filterIsInstance<PortWheelView>().single().value)
-        tap(activity, KeyEvent.KEYCODE_DPAD_UP)
-        assertEquals(65534, views(activity).filterIsInstance<PortWheelView>().single().value)
-        click(activity, "Portänderung verwerfen")
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(350))
-        assertEquals("65535", views(activity).filterIsInstance<TextView>().single { it.tag == "vm-port" }.text.toString())
-        panel.applyScan(dev.unrabbit.core.ConnectionSettings("other.example.net", 1, "device"))
-        tap(activity)
-        tap(activity, KeyEvent.KEYCODE_DPAD_UP)
-        assertEquals(1, views(activity).filterIsInstance<PortWheelView>().single().value)
-        @Suppress("DEPRECATION")
-        activity.onBackPressed()
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(350))
+        assertEquals(listOf("VM verbinden", "Abbrechen"), panel.navigation.map { it.first.contentDescription.toString() })
+        assertTrue(views(activity).none { it is EditText || it.tag in listOf("vm-host", "vm-port", "vm-user", "vm-host-key") })
+        panel.setPairing(true)
+        assertEquals("Abbrechen", panel.navigation.single().first.contentDescription)
+        assertFalse(panel.handleButton())
+        assertFalse(panel.handleWheel(1f))
+        panel.showError("Verbindung fehlgeschlagen.")
+        assertEquals(2, panel.navigation.size)
         click(activity, "Abbrechen")
-        assertTrue(views(activity).none { it is SettingsView })
-        assertEquals("", LocalStorage(activity).connection().host)
-        assertEquals("", LocalStorage(activity).connection().hostKeyFingerprint)
-        assertEquals(MenuIcon.SETTINGS, views(activity).filterIsInstance<MenuIconView>().single { it.isSelected }.icon)
+        assertFalse(PairingStore(activity).hasPairing())
+        assertTrue(LocalStorage(activity).load()!!.messages.isEmpty())
         controller.pause().stop().destroy()
     }
 

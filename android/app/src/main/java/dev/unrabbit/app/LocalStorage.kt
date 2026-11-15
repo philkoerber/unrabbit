@@ -34,11 +34,17 @@ class LocalStorage(context: Context) {
                     oldestFirst.filter { it.getString("id") == currentId })
                     .flatMap { readMessages(it.getJSONArray("messages"), legacy = true) }
             } else {
-                require(root.getInt("version") in 2..3)
+                require(root.getInt("version") in 2..4)
                 readMessages(root.getJSONArray("messages"))
             }
             require(items.map { it.id }.distinct().size == items.size)
-            SessionSnapshot(items, root.optBoolean("hadPending"))
+            val pending = root.optJSONArray("pendingRequestIds")?.let { array ->
+                (0 until array.length()).map(array::getString)
+            }.orEmpty()
+            require(pending.distinct().size == pending.size)
+            pending.forEach { id -> require(items.any { it.id == id && it.role == Role.USER && it.text.isNotBlank() }) }
+            SessionSnapshot(items, root.optBoolean("hadPending"), pending,
+                if (root.has("backendId")) root.getString("backendId") else null)
         } catch (_: Exception) {
             // Preserve the unreadable file for recovery instead of silently overwriting it.
             readFailed = true
@@ -72,21 +78,12 @@ class LocalStorage(context: Context) {
             messages.put(JSONObject().put("id", message.id).put("role", message.role.name)
                 .put("text", message.text).put("requestId", message.requestId).put("photos", photos))
         }
-        val data = JSONObject().put("version", 3).put("hadPending", snapshot.hadPending)
+        val data = JSONObject().put("version", 4).put("hadPending", snapshot.hadPending)
+            .put("pendingRequestIds", JSONArray(snapshot.pendingRequestIds)).put("backendId", snapshot.backendId)
             .put("messages", messages).toString().toByteArray()
         val stream = file.startWrite()
         try { stream.write(data); file.finishWrite(stream) }
         catch (error: Exception) { file.failWrite(stream); throw error }
     }
 
-    fun connection() = ConnectionSettings(
-        preferences.getString("vmHost", "").orEmpty(), preferences.getInt("vmPort", 22),
-        preferences.getString("vmUser", "unrabbit").orEmpty(), preferences.getString("vmHostKeyFingerprint", "").orEmpty()
-    )
-
-    fun saveConnection(settings: ConnectionSettings) {
-        require(settings.validationError() == null)
-        preferences.edit().putString("vmHost", settings.host).putInt("vmPort", settings.port)
-            .putString("vmUser", settings.user).putString("vmHostKeyFingerprint", settings.hostKeyFingerprint).apply()
-    }
 }

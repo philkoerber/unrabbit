@@ -5,187 +5,106 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.text.TextUtils
 import android.view.*
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.*
-import dev.unrabbit.core.ConnectionSettings
 import kotlin.math.roundToInt
 
-/** Connection data arrives by QR. Only the numeric SSH port can be changed on the device. */
+/** One connection action: scan a complete invitation. No editable endpoint or save draft. */
 @SuppressLint("ViewConstructor")
 class SettingsView(
     context: Context,
-    connection: ConnectionSettings,
-    private val onSave: (ConnectionSettings?) -> Unit,
+    pairedHost: String?,
+    private val onPair: (PairingQr) -> Unit,
     private val onClose: () -> Unit,
     private val onRequestScan: () -> Unit,
 ) : FrameLayout(context) {
-    private val regular = resources.getFont(R.font.plex_regular)
     private val baseNavigation = mutableListOf<Pair<View, () -> Unit>>()
-    val navigation: List<Pair<View, () -> Unit>> get() = if (scanner != null || portWheel != null) emptyList() else baseNavigation
-    val isScanning: Boolean get() = scanner != null
+    val navigation: List<Pair<View, () -> Unit>> get() = when {
+        scanner != null -> emptyList()
+        isPairing -> baseNavigation.takeLast(1)
+        else -> baseNavigation
+    }
+    val isScanning get() = scanner != null
+    var isPairing = false
+        private set
     var onSelection: (Int) -> Unit = {}
     var onNavigationChanged: (Int) -> Unit = {}
     private var scanner: SetupScannerView? = null
-    private var portWheel: PortWheelView? = null
-    private var scanSelection = 0
-    private var draft = connection
     private val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    private val error = label("", 14f, true).apply {
-        visibility = GONE; setPadding(dp(16), dp(10), 0, 0)
+    private val status = label(pairedHost?.let { "Gekoppelt · $it" } ?: "Nicht verbunden", 14f).apply {
+        tag = "vm-status"; setPadding(dp(16), dp(8), 0, dp(20))
         accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_POLITE
     }
-    private fun value(tagName: String, size: Float = 20f) = label("", size).apply {
-        tag = tagName; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE
-        setPadding(0, dp(2), 0, dp(2))
-    }
-    private val host = value("vm-host")
-    private val port = value("vm-port")
-    private val user = value("vm-user")
-    private val fingerprint = value("vm-host-key", 13f).apply { maxLines = 2 }
-    private val scroll = DeviceScrollView(context).apply {
-        isVerticalScrollBarEnabled = false; overScrollMode = OVER_SCROLL_NEVER
-        isFocusable = false; defaultFocusHighlightEnabled = false
-    }
-
     init {
         tag = "unrabbit-settings"; isClickable = true; isFocusableInTouchMode = true
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         defaultFocusHighlightEnabled = false
-        column.addView(label("Einstellungen", 22f).apply { setPadding(dp(16), 0, 0, dp(12)) })
-        fun field(title: String, value: TextView, scans: Boolean, action: () -> Unit) {
-            val row = SettingRow(context)
-            row.contentDescription = if (scans) title + " scannen" else title
+        column.addView(label("VM", 22f).apply { setPadding(dp(16), 0, 0, dp(4)) })
+        column.addView(status)
+        val scan = SettingRow(context).apply {
+            contentDescription = if (pairedHost == null) "VM verbinden" else "VM wechseln"
             val body = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-            val labels = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(label(title, 12f, true)); addView(value, LinearLayout.LayoutParams(-1, -2))
-            }
-            body.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
-            if (scans) body.addView(MenuIconView(context, MenuIcon.SCAN).apply {
-                isClickable = false; isFocusable = false; showSelectionDot = false
+            body.addView(label(contentDescription.toString(), 20f), LinearLayout.LayoutParams(0, -2, 1f))
+            body.addView(MenuIconView(context, MenuIcon.SCAN).apply {
+                isFocusable = false; isClickable = false; showSelectionDot = false
                 importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams(dp(40), dp(40)))
-            row.addView(body, LinearLayout.LayoutParams(-1, -2))
-            register(row, action)
-            column.addView(row, LinearLayout.LayoutParams(-1, -2))
+            addView(body)
         }
-        field("VM-Adresse", host, true) { scanSelection = 0; onRequestScan() }
-        field("SSH-Port", port, false) { openPortWheel() }
-        field("Benutzer", user, true) { scanSelection = 2; onRequestScan() }
-        field("Host-Schlüssel", fingerprint, true) { scanSelection = 3; onRequestScan() }
-        refreshValues()
-        column.addView(error)
-        val footer = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(8), 0, 0)
-        }
-        val cancel = MenuIconView(context, MenuIcon.CLOSE).apply { contentDescription = "Abbrechen" }
-        register(cancel) { onClose() }
-        footer.addView(cancel, LinearLayout.LayoutParams(dp(72), dp(48)))
-        val save = MenuIconView(context, MenuIcon.SAVE)
-        register(save) { saveDraft() }
-        footer.addView(save, LinearLayout.LayoutParams(dp(72), dp(48)))
-        column.addView(footer)
-        scroll.addView(column)
-        addView(scroll, LayoutParams(-1, -1).apply {
-            leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(24); bottomMargin = dp(24)
-        })
+        register(scan) { onRequestScan() }
+        column.addView(scan, LinearLayout.LayoutParams(-1, -2))
+        val close = MenuIconView(context, MenuIcon.CLOSE).apply { contentDescription = "Abbrechen" }
+        register(close, allowDuringPairing = true, action = onClose)
+        column.addView(close, LinearLayout.LayoutParams(dp(72), dp(48)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(20) })
+        addView(column, LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply { leftMargin = dp(24); rightMargin = dp(24) })
     }
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
-    private fun label(value: String, size: Float, secondary: Boolean = false) = TextView(context).apply {
-        text = value; typeface = regular; textSize = size; includeFontPadding = false
-        setTextColor(context.getColorStateList(if (secondary) R.color.selection_secondary else R.color.selection_text))
+    private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()
+    private fun label(value: String, size: Float) = TextView(context).apply {
+        text = value; textSize = size; typeface = resources.getFont(R.font.plex_regular); includeFontPadding = false
+        setTextColor(context.getColorStateList(R.color.selection_text))
     }
-    private fun register(view: View, action: () -> Unit) {
+    private fun register(view: View, allowDuringPairing: Boolean = false, action: () -> Unit) {
         val index = baseNavigation.size
-        baseNavigation += view to action
-        view.setOnClickListener { onSelection(index); action() }
+        baseNavigation += view to { if (!isPairing || allowDuringPairing) action() }
+        view.setOnClickListener { if (!isPairing || allowDuringPairing) { onSelection(if (isPairing) 0 else index); action() } }
     }
-    fun showError(message: String) { error.text = message; error.visibility = VISIBLE }
+    fun setPairing(active: Boolean) {
+        isPairing = active
+        baseNavigation.forEachIndexed { index, item -> item.first.isEnabled = !active || index == baseNavigation.lastIndex }
+        if (active) status.text = "Verbinde …"
+        onNavigationChanged(0)
+    }
+    fun showError(message: String) { setPairing(false); status.text = message }
     fun openScanner() {
-        if (scanner != null || portWheel != null) return
-        scroll.visibility = INVISIBLE
-        scanner = SetupScannerView(context, { applyScan(it); closeScanner() }, { closeScanner() }).also {
-            showOverlay(it)
+        if (scanner != null || isPairing) return
+        column.visibility = INVISIBLE
+        scanner = SetupScannerView(context, { applyScan(it) }, { closeScanner() }).also {
+            addView(it, LayoutParams(-1, -1))
+            if (ValueAnimator.areAnimatorsEnabled()) { it.alpha = 0f; it.animate().alpha(1f).setDuration(240).start() }
         }
         onNavigationChanged(0)
     }
-    fun applyScan(connection: ConnectionSettings) {
-        require(connection.validationError() == null)
-        draft = connection
-        refreshValues(); error.visibility = GONE
-    }
-    private fun refreshValues() {
-        host.text = draft.host.ifBlank { "Nicht eingerichtet" }
-        port.text = String.format(java.util.Locale.ROOT, "%d", draft.port)
-        user.text = draft.user
-        fingerprint.text = draft.hostKeyFingerprint.ifBlank { "Nicht gesetzt" }
+    fun applyScan(invitation: PairingQr) {
+        if (isPairing) return
+        closeScanner()
+        onPair(invitation)
     }
     private fun closeScanner() {
         val old = scanner ?: return
-        scanner = null; old.closeCamera(); hideOverlay(old)
-        onNavigationChanged(scanSelection)
-    }
-    private fun openPortWheel() {
-        if (portWheel != null || scanner != null) return
-        scroll.visibility = INVISIBLE
-        portWheel = PortWheelView(context, draft.port, { value ->
-            draft = draft.copy(port = value); refreshValues(); closePortWheel()
-        }, { closePortWheel() }).also { showOverlay(it) }
+        scanner = null; old.closeCamera(); old.animate().cancel()
+        old.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        column.visibility = VISIBLE
+        if (ValueAnimator.areAnimatorsEnabled()) old.animate().alpha(0f).setDuration(160).withEndAction { removeView(old) }.start()
+        else removeView(old)
         onNavigationChanged(0)
-    }
-    private fun closePortWheel() {
-        val old = portWheel ?: return
-        portWheel = null; hideOverlay(old)
-        onNavigationChanged(1)
-    }
-    private fun showOverlay(view: View) {
-        addView(view, LayoutParams(-1, -1))
-        if (ValueAnimator.areAnimatorsEnabled()) {
-            view.alpha = 0f
-            view.animate().alpha(1f).setDuration(240).start()
-        }
-    }
-    private fun hideOverlay(view: View) {
-        scroll.visibility = VISIBLE
-        disableActions(view)
-        view.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        view.animate().cancel()
-        if (ValueAnimator.areAnimatorsEnabled()) view.animate().alpha(0f).setDuration(160).withEndAction { removeView(view) }.start()
-        else removeView(view)
         requestFocus()
     }
-    private fun disableActions(view: View) {
-        view.isEnabled = false; view.isClickable = false
-        if (view is ViewGroup) for (i in 0 until view.childCount) disableActions(view.getChildAt(i))
-    }
-    fun handleWheel(amount: Float): Boolean {
-        if (scanner != null) return true
-        val wheel = portWheel ?: return false
-        wheel.rotate(amount); return true
-    }
-    fun handleButton(): Boolean {
-        if (scanner != null) return true // QR recognition is automatic; the key is not a shutter here.
-        val wheel = portWheel ?: return false
-        wheel.confirm(); return true
-    }
-    fun handleBack(): Boolean = when {
-        scanner != null -> { closeScanner(); true }
-        portWheel != null -> { closePortWheel(); true }
-        else -> false
-    }
+    fun handleWheel(amount: Float): Boolean = scanner != null
+    fun handleButton(): Boolean = scanner != null
+    fun handleBack(): Boolean = if (scanner != null) { closeScanner(); true } else false
     fun pauseCamera() { scanner?.pauseCamera() }
     fun resumeCamera() { scanner?.resumeCamera() }
-    private fun saveDraft() {
-        val connection = draft.takeUnless { it.host.isBlank() }
-        val problem = connection?.validationError()
-        if (problem != null) {
-            showError(problem)
-            error.post { error.requestRectangleOnScreen(android.graphics.Rect(0, 0, error.width, error.height)) }
-        } else onSave(connection)
-    }
     override fun onDetachedFromWindow() { scanner?.closeCamera(); super.onDetachedFromWindow() }
 }
 

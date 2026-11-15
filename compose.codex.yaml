@@ -1,0 +1,28 @@
+# Explicit opt-in: docker compose -f compose.yaml -f compose.codex.yaml ...
+# Only named volumes: never mount the host's home, Codex login or Docker socket.
+services:
+  vm:
+    image: unrabbit-local-codex
+    # Allow bubblewrap's unprivileged namespaces. Codex still enforces read-only
+    # command access; cap_drop, no-new-privileges and the read-only root remain.
+    security_opt: ["seccomp=unconfined"]
+    build:
+      context: ./vm
+      target: codex
+    entrypoint: ["python3", "-m", "unrabbit_vm"]
+    volumes:
+      - codex-home:/home/unrabbit/.codex
+      - codex-workspace:/home/unrabbit/workspace
+    command: ["--state", "/data", "--listen", "0.0.0.0", "--agent", "codex", "--workspace", "/home/unrabbit/workspace"]
+  setup:
+    image: unrabbit-local-codex
+    security_opt: ["seccomp=unconfined"]
+    build:
+      context: ./vm
+      target: codex
+    volumes:
+      - codex-home:/home/unrabbit/.codex
+      - codex-workspace:/home/unrabbit/workspace
+volumes:
+  codex-home:
+  codex-workspace:

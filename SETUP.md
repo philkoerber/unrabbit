@@ -1,6 +1,6 @@
 # Setup
 
-Start in an Android emulator. The app is a local development prototype; a tested r1 installation and the VM service are still planned.
+Start in an Android emulator. The app and Ubuntu service can be developed together locally; QR-based SSH pairing is implemented; a tested physical r1 installation is still ahead.
 
 ## Build
 
@@ -39,7 +39,7 @@ adb -s emulator-5572 install -t -r android/app/build/outputs/apk/debug/app-debug
 adb -s emulator-5572 shell am start -n dev.unrabbit.app/.MainActivity
 ```
 
-The `-t` flag is required because this development APK is `testOnly`. Choose **Demo öffnen** on first launch. No real microphone input or VM connection starts.
+The `-t` flag is required because this development APK is `testOnly`. Choose **VM verbinden** to scan your VM wizard’s QR. **Demo öffnen** remains available in the debug build for UI development. Speech input is still simulated.
 
 | Input | Action |
 | --- | --- |
@@ -50,27 +50,54 @@ The `-t` flag is required because this development APK is `testOnly`. Choose **D
 | Double-press ← within 300 ms | Open the photo camera from chat or rest |
 | ← in the photo camera | Capture a local photo draft |
 | Touch X in either camera | Close the camera |
-| ↑ / ↓ in the port wheel, then ← | Adjust the port, then accept it into the settings draft |
 
-Photos wait in chat until the next completed speech input. The current demo passes them to a local simulated transport, not to a server.
+Photos wait in chat until the next completed speech input. A paired VM takes precedence over the optional debug transport below. Release builds require QR pairing to send requests.
 
-## Connection QR
+## Local Ubuntu service
 
-Create a QR on your setup computer. It contains public connection details together: host, port, user and an optional public host-key fingerprint.
+With Docker running and the debug app installed/opened once:
+
+```sh
+python3 scripts/local_vm.py up
+python3 scripts/local_vm.py attach
+python3 scripts/check_local_vm.py
+```
+
+The first two commands start Ubuntu locally and connect the emulator over ADB. The third is an opt-in smoke test: it sends one simulated request (including waiting photos), restarts the app, and checks result recovery without clearing history. It refuses QR-paired devices and requires kiosk mode to be disabled so Android can actually stop the app. Everything uses the offline demo agent by default. See [vm/README.md](vm/README.md) for details, Codex integration and stopping/detaching the setup. The product's SSH QR fields remain separate from this debug-only connection.
+
+## Terminal wizard
+
+On your Ubuntu VM, run from the checkout as a dedicated account **without root or sudo rights**. Use Python 3.11+ with venv support. If Codex is already installed and `codex login status` succeeds under that account, use the existing installation and login. Otherwise install/authenticate it first; the wizard also offers an offline demo agent.
 
 ```sh
 python3 -m venv .venv-setup
 .venv-setup/bin/pip install -r scripts/requirements-setup.txt
-.venv-setup/bin/python scripts/setup_qr.py \
-  --host vm.example.net --port 22 --user unrabbit \
-  --output private/unrabbit-setup.png
+.venv-setup/bin/python scripts/unrabbit.py setup
 ```
 
-Optionally add `--host-key-fingerprint` with a public `SHA256:...` fingerprint verified through your trusted administrative connection. Do not put private keys, passwords or tokens into the QR. The generator requires Python 3.9 or newer.
+1. Choose the detected agent. Currently Codex and Demo have adapters.
+2. Confirm the reachable VM address, Unrabbit SSH port (default **2222**) and workspace.
+3. In the app, choose **VM verbinden** and scan the QR. Pairing and the connection check happen automatically. No address, port or key is entered on the device.
 
-Open the PNG on the setup computer. In the app, choose **VM-Adresse** in settings and point the camera at it. **Benutzer** and **Host-Schlüssel** open the same scanner. A recognized QR fills all fields and closes the camera. The settings checkmark saves the draft; the cross discards it. The SSH port can also be adjusted with the number wheel. Slow turns change it by one; sustained fast turns accelerate.
+The wizard starts the real service before displaying the QR. It reports **Verbunden** only after the app authenticates with its device-owned key and verifies the service identity. Keep the foreground process running; Ctrl+C stops it. To restart an already paired service:
 
-Saving currently stores configuration only. It does not verify the host or establish SSH. The planned VM setup will generate the QR and provision a separate device-owned key.
+```sh
+.venv-setup/bin/python scripts/unrabbit.py run
+```
+
+The current Codex adapter is read-only: command reads are limited to the selected workspace, current job files and minimal runtime paths. Service state and credential directories are denied, command networking is off, and no approval escalation is enabled. The tested Codex version is 0.165.0. Model/authentication traffic still reaches the hosted provider.
+
+The SSH listener is separate from the VM’s administrative SSH service. The selected TCP port must be reachable through the VM/cloud firewall. The wizard does **not** edit firewall rules, system SSH configuration, users or autostart. If the administrator approves it, a UFW installation can expose the default port with `sudo ufw allow 2222/tcp comment 'Unrabbit'`; it can later be removed with `sudo ufw delete allow 2222/tcp`. Only the administrator needs elevated privileges; the Unrabbit service must remain unprivileged.
+
+The address suggestion comes from the SSH session or a local routed address. The port belongs to Unrabbit, not the administrative SSH session. With NAT or multiple networks, set the reachable endpoint in the terminal. Containers do not advertise their internal IP automatically.
+
+The QR contains a **single-use code valid for ten minutes**, the endpoint and a pinned host fingerprint. Treat it as a temporary credential, not a public image. It carries no private key, OS password or provider credentials. The device creates its key locally and encrypts it using Android Keystore. The wizard renews expired invitations and removes the QR image after verified pairing or clean shutdown. A copied image can no longer enroll another device once the code has been consumed.
+
+Configuration lives in `~/.config/unrabbit/vm.json`; state, the dedicated SSH host key and registered public device keys live in `~/.local/state/unrabbit`. `--config /absolute/path/vm.json` selects a different config. For disposable development, place the checkout, venv and selected workspace in one directory and point the shell’s `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME` and `TMPDIR` inside it. Keep the account's normal `CODEX_HOME` to reuse its existing login; choose a separate Codex home only when you want a separate personal login. See [OpenAI's authentication documentation](https://learn.chatgpt.com/docs/auth). Stop the process before deleting its directory.
+
+Old address-only QR codes are no longer accepted. Re-run the wizard to generate a real invitation. An unsuccessful scan/connection leaves an existing pairing intact; switching VMs is blocked while requests are outstanding. A rejected device key ends the request with a re-pairing message rather than retrying indefinitely. Existing local chat history is preserved and is not automatically uploaded.
+
+Autostart installation, physical r1 verification and a UI for revoking individual devices remain future work. To revoke all device access during development, stop the service and remove its `devices.json` before restarting.
 
 ## Optional emulator kiosk
 

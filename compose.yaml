@@ -1,0 +1,34 @@
+name: unrabbit-local
+services:
+  vm:
+    build: ./vm
+    ports:
+      - "127.0.0.1:${UNRABBIT_DEV_PORT:-8787}:8787"
+    volumes:
+      - vm-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    stop_grace_period: 15s
+    command: ["--state", "/data", "--listen", "0.0.0.0", "--demo-delay", "${UNRABBIT_DEMO_DELAY:-1.2}"]
+  setup:
+    profiles: [setup]
+    build:
+      context: ./vm
+      target: setup
+    volumes:
+      - setup-data:/home/unrabbit
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    stdin_open: true
+    tty: true
+volumes:
+  vm-data:
+  setup-data:

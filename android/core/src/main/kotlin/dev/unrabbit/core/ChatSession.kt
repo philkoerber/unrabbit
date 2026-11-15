@@ -11,13 +11,21 @@ data class PhotoAttachment(val id: String, val width: Int, val height: Int) {
 }
 data class Message(val id: String, val role: Role, val text: String, val requestId: String? = null,
     val photos: List<PhotoAttachment> = emptyList())
-data class SessionSnapshot(val messages: List<Message>, val hadPending: Boolean = false)
+data class SessionSnapshot(val messages: List<Message>, val hadPending: Boolean = false,
+    val pendingRequestIds: List<String> = emptyList(), val backendId: String? = null)
 data class ChatRequest(val id: String, val text: String, val photos: List<PhotoAttachment> = emptyList())
 
 /** Pure chat state. Android input, storage, audio and transport do not belong here. */
-class ChatSession(snapshot: SessionSnapshot? = null, private val nextId: () -> String = { UUID.randomUUID().toString() }) {
+class ChatSession(snapshot: SessionSnapshot? = null, private val nextId: () -> String = { UUID.randomUUID().toString() },
+    resumePending: Boolean = false) {
     private val items = snapshot?.messages?.toMutableList() ?: mutableListOf()
     private val active = mutableMapOf<String, ChatRequest>()
+    init {
+        if (resumePending) snapshot?.pendingRequestIds?.forEach { id ->
+            val message = items.single { it.id == id && it.role == Role.USER && it.text.isNotBlank() }
+            active[id] = ChatRequest(id, message.text, items.filter { it.requestId == id }.flatMap { it.photos })
+        }
+    }
     val interruptedOnRestore = snapshot?.hadPending == true
     val messages: List<Message> get() = items.toList()
     val activeRequests: List<ChatRequest> get() = active.values.toList()
@@ -57,17 +65,21 @@ class ChatSession(snapshot: SessionSnapshot? = null, private val nextId: () -> S
 
     /** Call only after cancellation was acknowledged or this request failed. */
     fun stopped(requestId: String) = active.remove(requestId) != null
-    fun snapshot() = SessionSnapshot(messages, active.isNotEmpty())
+    fun snapshot() = SessionSnapshot(messages, active.isNotEmpty(), active.keys.toList())
 }
 
 sealed interface TransportResult {
     data class Reply(val text: String) : TransportResult
     data class Failure(val message: String) : TransportResult
+    data class Waiting(val message: String?) : TransportResult
 }
 
 /** Implementations deliver callbacks on the UI thread; IDs survive reconnects. */
 interface ChatTransport {
+    val identity: String? get() = null
     fun send(request: ChatRequest, onResult: (TransportResult) -> Unit)
     fun cancel(requestId: String, onAcknowledged: (Boolean) -> Unit)
+    fun resume() {}
+    fun pause() {}
     fun close()
 }

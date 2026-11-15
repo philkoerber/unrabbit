@@ -33,6 +33,9 @@ class MainActivity : Activity() {
     private lateinit var session: ChatSession
     private lateinit var transport: ChatTransport
     private lateinit var photos: PhotoStore
+    private val pairingIo = Executors.newSingleThreadExecutor()
+    @Volatile private var pairingApi: SshApi? = null
+    private var pairingGeneration = 0
     private val photoIo = Executors.newSingleThreadExecutor()
     private lateinit var root: FrameLayout
     private var content: FrameLayout? = null
@@ -69,9 +72,11 @@ class MainActivity : Activity() {
         regular = resources.getFont(R.font.plex_regular)
         storage = LocalStorage(this)
         photos = PhotoStore(this)
-        session = ChatSession(storage.load())
-        transport = DemoTransport()
-        if (session.interruptedOnRestore) notice = "Demo unterbrochen. Bei Bedarf erneut senden."
+        transport = TransportFactory.create(this, photos)
+        val snapshot = storage.load()
+        val recover = transport.identity != null && snapshot?.backendId == transport.identity
+        session = ChatSession(snapshot, resumePending = recover)
+        if (session.interruptedOnRestore && !session.pending()) notice = "Frühere Anfrage unterbrochen. Sie wird nicht automatisch wiederholt."
         if (storage.readFailed) notice = "Gespeicherte Demo konnte nicht geladen werden."
         save() // Also commits the one-time legacy migration; its source file stays intact.
         root = FrameLayout(this).apply {
@@ -109,6 +114,7 @@ class MainActivity : Activity() {
         }
         page = if (storage.preferences.getBoolean("demoAcknowledged", false)) Page.CHAT else Page.WELCOME
         render()
+        session.activeRequests.forEach(::send)
     }
 
     override fun onStart() { super.onStart(); deviceStatus.start() }
@@ -117,6 +123,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed = true
+        transport.resume()
         DeviceMode.enterIfManaged(this)
         DeviceMode.hideSystemBars(this)
         settingsView?.resumeCamera()
@@ -126,6 +133,8 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         resumed = false
+        transport.pause()
+        if (settingsView?.isPairing == true) { cancelPairing(); settingsView?.showError("Unterbrochen. Bitte erneut scannen.") }
         logo?.setPlaybackActive(false)
         settingsView?.pauseCamera()
         cameraView?.pauseCamera()
@@ -147,6 +156,8 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         cameraView?.closeCamera()
+        cancelPairing()
+        pairingIo.shutdownNow()
         photoIo.shutdown()
         handler.removeCallbacksAndMessages(null)
         content?.animate()?.cancel()
@@ -228,11 +239,15 @@ class MainActivity : Activity() {
             setPadding(dp(24), dp(24), dp(24), dp(24))
         }
         column.addView(text("Unrabbit", 28f))
-        column.addView(text("Lokale Demo\nKeine Mikrofonaufnahme oder VM-Verbindung.", 16f, true).apply {
+        column.addView(text(if (transport.identity == null && TransportFactory.supportsDemo) "Lokale Demo\nKeine Mikrofonaufnahme oder VM-Verbindung."
+            else "Sprache wird noch simuliert.", 16f, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(18), 0, dp(24))
         })
-        column.addView(navButton("Demo öffnen") {
+        column.addView(navButton("VM verbinden") {
+            page = Page.SETTINGS; selection = 0; render()
+        })
+        if (TransportFactory.supportsDemo) column.addView(navButton("Demo öffnen") {
             storage.preferences.edit().putBoolean("demoAcknowledged", true).apply()
             page = Page.CHAT
             selection = 0
@@ -354,12 +369,9 @@ class MainActivity : Activity() {
     }
 
     private fun renderSettings() {
-        settingsView = SettingsView(this, storage.connection(),
-            onSave = { connection ->
-                if (connection != null) storage.saveConnection(connection)
-                else storage.preferences.edit().remove("vmHost").remove("vmPort").remove("vmUser").remove("vmHostKeyFingerprint").apply()
-                page = Page.CHAT; menu = false; selection = 0; render()
-            }, onClose = { closeSettings() }, onRequestScan = { requestSetupScan() }).also { panel ->
+        val paired = runCatching { PairingStore(this).load() }.getOrNull()
+        settingsView = SettingsView(this, paired?.connection?.host,
+            onPair = { pairVm(it) }, onClose = { closeSettings() }, onRequestScan = { requestSetupScan() }).also { panel ->
             panel.onSelection = { selection = it; highlightSelection() }
             panel.onNavigationChanged = { position ->
                 navigation.clear(); navigation += panel.navigation
@@ -371,6 +383,45 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun cancelPairing() {
+        pairingGeneration++
+        pairingApi?.close(); pairingApi = null
+    }
+
+    private fun pairVm(invitation: PairingQr) {
+        val panel = settingsView ?: return
+        if (session.pending()) { panel.showError("Laufende Anfrage zuerst beenden."); return }
+        cancelPairing()
+        val generation = pairingGeneration
+        val store = PairingStore(this)
+        val vm = PairedVm(invitation.connection, invitation.serverId)
+        val api = SshApi(vm, store::privateKey)
+        pairingApi = api
+        panel.setPairing(true)
+        pairingIo.execute {
+            val error = try { api.pair(invitation); null }
+            catch (failure: HostIdentityFailure) { failure.message }
+            catch (failure: PairingFailure) { failure.message }
+            catch (_: Exception) { "Verbindung fehlgeschlagen. VM-Wizard und Netzwerk prüfen, dann erneut scannen." }
+            finally { api.close() }
+            handler.post {
+                if (isDestroyed || generation != pairingGeneration || settingsView !== panel) return@post
+                pairingApi = null
+                if (error != null) { panel.showError(error); return@post }
+                try { store.save(vm) }
+                catch (_: Exception) { panel.showError("Kopplung konnte nicht gespeichert werden. Erneut scannen."); return@post }
+                transport.close()
+                transport = TransportFactory.create(this, photos)
+                if (resumed) transport.resume()
+                storage.preferences.edit().putBoolean("demoAcknowledged", true).apply()
+                save()
+                notice = "Verbunden"; noticeRevision++
+                page = Page.CHAT; menu = false; resting = false; selection = 0
+                render()
+            }
+        }
+    }
+
     private fun requestSetupScan() {
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) settingsView?.openScanner()
         else requestPermissions(arrayOf(Manifest.permission.CAMERA), 71)
@@ -378,6 +429,9 @@ class MainActivity : Activity() {
 
     private fun openCamera() {
         if (page != Page.CHAT || menu) return
+        if (session.draftPhotos.size >= 4) {
+            resting = false; notice = "Bilder zuerst mit einer Nachricht senden."; noticeRevision++; render(); return
+        }
         returnToRestAfterCamera = resting
         page = Page.CAMERA; selection = 0
         render()
@@ -419,15 +473,19 @@ class MainActivity : Activity() {
     }
 
     private fun closeSettings() {
+        cancelPairing()
         page = Page.CHAT; menu = true; selection = 0; render()
     }
 
     private fun submit(text: String) {
+        if (session.draftPhotos.size > 4 && transport.identity != null) {
+            notice = "Höchstens vier Bilder pro Anfrage im lokalen VM-Test."; noticeRevision++; render(); return
+        }
         notice = null; noticeRevision++
         val request = session.submit(text)
         render(follow = true)
-        save()
-        send(request)
+        if (save()) send(request)
+        else { session.stopped(request.id); render() }
     }
 
     private fun send(request: ChatRequest) {
@@ -440,6 +498,7 @@ class MainActivity : Activity() {
                     session.stopped(request.id)
                     notice = result.message; noticeRevision++
                 }
+                is TransportResult.Waiting -> { notice = result.message; noticeRevision++ }
             }
             save()
             if (page == Page.CHAT) render(follow && !menu) else updateLogo()
@@ -463,7 +522,7 @@ class MainActivity : Activity() {
                 remaining--
                 if (remaining == 0 && revision == noticeRevision) notice = when {
                     unconfirmed -> "Anhalten nicht bestätigt."
-                    stopped -> "Demo angehalten."
+                    stopped -> "Angehalten."
                     else -> null
                 }
                 save()
@@ -483,6 +542,7 @@ class MainActivity : Activity() {
             animate = animateStatus)
         updateChatVisibility(animate = true)
         logo?.setMode(when {
+            settingsView?.isPairing == true -> LogoMode.WAITING
             recording -> LogoMode.LISTENING
             page == Page.CHAT && session.pending() -> LogoMode.WAITING
             else -> LogoMode.QUIET
@@ -617,8 +677,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun save() {
-        try { storage.save(session.snapshot()) }
-        catch (_: Exception) { notice = "Demo konnte nicht gespeichert werden."; noticeRevision++ }
+    private fun save(): Boolean {
+        return try { storage.save(session.snapshot().copy(backendId = transport.identity)); true }
+        catch (_: Exception) { notice = "Chat konnte nicht gespeichert werden."; noticeRevision++; false }
     }
 }

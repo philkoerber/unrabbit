@@ -104,4 +104,20 @@ class ChatSessionTest {
         assertThrows(IllegalArgumentException::class.java) { session.submit(" \n ") }
         assertTrue(session.messages.isEmpty())
     }
+
+    @Test fun networkRecoveryRetainsExactRequestIdsAndPhotosWithoutDuplicatingMessages() {
+        val session = ChatSession()
+        val photo = PhotoAttachment(java.util.UUID.randomUUID().toString(), 32, 24)
+        session.addPhoto(photo)
+        val first = session.submit("Bild ansehen")
+        val second = session.submit("Und dann?")
+        val restored = ChatSession(session.snapshot(), resumePending = true)
+        assertEquals(listOf(first, second), restored.activeRequests)
+        assertEquals(session.messages, restored.messages)
+        assertTrue(restored.reply(first.id, "Antwort nach Wiederaufnahme"))
+        assertFalse(restored.reply(first.id, "Doppelt"))
+        restored.stopped(second.id)
+        assertTrue(restored.snapshot().pendingRequestIds.isEmpty())
+        assertFalse(ChatSession(restored.snapshot(), resumePending = true).pending())
+    }
 }

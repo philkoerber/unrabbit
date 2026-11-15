@@ -22,6 +22,8 @@ id_rsa*
 id_ed25519*
 *.jks
 *.keystore
+auth.json
+codex-login.log
 
 # Generated files
 __pycache__/
@@ -35,3 +37,21 @@ android/**/build/
 android/.idea/
 *.iml
 .venv-setup/
+
+# Project-local runtime and pairing credentials
+/.local/
+/.tmp/
+/workspace/
+*.qr.png
+ssh-host-key
+devices.json
+paired-vm.json
+device-key.enc
+device-key.enc.bak
+paired-vm.json.bak
+client.json
+*.sqlite3
+*.sqlite3-*
+service.lock
+demo-stream.json
+demo-chats.json

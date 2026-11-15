@@ -96,4 +96,17 @@ class LocalStorageTest {
             it.name.startsWith("demo-stream-unreadable-")
         }.readText())
     }
+
+    @Test fun durableOutboxRestoresPhotosAndBackendIdentityWithoutReplayingDemoHistory() {
+        val storage = LocalStorage(context)
+        val session = ChatSession()
+        val photo = PhotoAttachment(java.util.UUID.randomUUID().toString(), 800, 600)
+        session.addPhoto(photo)
+        val request = session.submit("Eine Bildfrage")
+        val snapshot = session.snapshot().copy(backendId = "local-server")
+        storage.save(snapshot)
+        assertEquals(snapshot, storage.load())
+        assertEquals(listOf(request), ChatSession(storage.load(), resumePending = true).activeRequests)
+        assertFalse(ChatSession(storage.load()).pending())
+    }
 }

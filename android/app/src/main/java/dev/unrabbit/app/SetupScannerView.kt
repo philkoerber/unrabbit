@@ -6,14 +6,12 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.TextView
-import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.*
 import com.journeyapps.barcodescanner.camera.CenterCropStrategy
-import dev.unrabbit.core.ConnectionSettings
 import kotlin.math.roundToInt
 
 @SuppressLint("ViewConstructor")
-class SetupScannerView(context: Context, private val onResult: (ConnectionSettings) -> Unit, onClose: () -> Unit) : FrameLayout(context) {
+class SetupScannerView(context: Context, private val onResult: (PairingQr) -> Unit, onClose: () -> Unit) : FrameLayout(context) {
     private val preview = BarcodeView(context).apply {
         setUseTextureView(true)
         previewScalingStrategy = CenterCropStrategy()
@@ -34,7 +32,7 @@ class SetupScannerView(context: Context, private val onResult: (ConnectionSettin
         isClickable = true
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         setBackgroundColor(0xff171915.toInt())
-        preview.decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
+        preview.decoderFactory = DecoderFactory { hints -> Decoder(SetupQrReader(hints)) }
         preview.addStateListener(object : CameraPreview.StateListener {
             override fun previewSized() {}
             override fun previewStarted() {}
