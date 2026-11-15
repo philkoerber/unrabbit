@@ -8,6 +8,8 @@ class PairingQr(val connection: ConnectionSettings, val serverId: String, val to
     override fun toString() = "PairingQr(redacted)"
 }
 
+internal class ExpiredSetupQr : IllegalArgumentException("Einrichtungs-QR abgelaufen.")
+
 /** Only complete, expiring pairing invitations are accepted. No manual connection drafts. */
 object SetupQr {
     fun parse(raw: String, now: Long = System.currentTimeMillis() / 1000): PairingQr {
@@ -38,7 +40,8 @@ object SetupQr {
         val expires = fields["expiresAt"]
         require(expires is Int || expires is Long)
         val expiry = (expires as Number).toLong()
-        require(expiry > now && expiry <= now + 900) { "QR abgelaufen. Bitte den aktuellen QR scannen." }
+        if (expiry <= now) throw ExpiredSetupQr()
+        require(expiry <= now + 900) { "QR-Zeit passt nicht zur Gerätezeit." }
         return PairingQr(connection, serverId, token, expiry)
     }
 }

@@ -30,6 +30,40 @@ internal open class VmTransport(private val api: VmApi,
     private val entries = ConcurrentHashMap<String, Entry>()
     @Volatile private var paused = true
     @Volatile private var closed = false
+    @Volatile private var connectionEpoch = 0L
+    private var healthTimer: ScheduledFuture<*>? = null
+    private var connectionObserver: ((VmConnectionState) -> Unit)? = null
+    private var connectionState = VmConnectionState.CHECKING
+
+    /** The foreground UI observes a real health response, including the pinned VM identity. */
+    fun observeConnection(observer: (VmConnectionState) -> Unit) {
+        connectionObserver = observer
+        observer(connectionState)
+        if (!paused && !closed) scheduleHealth(0, connectionEpoch)
+    }
+
+    private fun publishConnection(state: VmConnectionState, epoch: Long = connectionEpoch) {
+        main.post {
+            if (closed || paused || epoch != connectionEpoch || state == connectionState) return@post
+            connectionState = state
+            connectionObserver?.invoke(state)
+        }
+    }
+
+    @Synchronized private fun scheduleHealth(delay: Long, epoch: Long) {
+        if (closed || paused || epoch != connectionEpoch || connectionObserver == null) return
+        healthTimer?.cancel(false)
+        healthTimer = io.schedule({
+            if (closed || paused || epoch != connectionEpoch) return@schedule
+            val state = try {
+                val result = api.request("GET", "/v1/health", null)
+                if (result.first == 200 && result.second.optString("serverId") == identity)
+                    VmConnectionState.CONNECTED else VmConnectionState.DISCONNECTED
+            } catch (_: Exception) { VmConnectionState.DISCONNECTED }
+            publishConnection(state, epoch)
+            scheduleHealth(30, epoch)
+        }, delay, TimeUnit.SECONDS)
+    }
     private class Entry(val request: ChatRequest, val callback: (TransportResult) -> Unit) {
         @Volatile var timer: ScheduledFuture<*>? = null
         var delay = 2L
@@ -107,7 +141,18 @@ internal open class VmTransport(private val api: VmApi,
         return JSONObject().put("id", request.id).put("text", request.text).put("photos", images)
     }
 
-    private fun api(method: String, path: String, body: JSONObject? = null) = api.request(method, path, body)
+    private fun api(method: String, path: String, body: JSONObject? = null): Pair<Int, JSONObject> {
+        val epoch = connectionEpoch
+        return try {
+            api.request(method, path, body).also {
+                if (it.first in listOf(401, 403, 409) || it.first >= 500)
+                    publishConnection(VmConnectionState.DISCONNECTED, epoch)
+            }
+        } catch (error: Exception) {
+            publishConnection(VmConnectionState.DISCONNECTED, epoch)
+            throw error
+        }
+    }
 
     override fun cancel(requestId: String, onAcknowledged: (Boolean) -> Unit) {
         io.execute {
@@ -123,19 +168,25 @@ internal open class VmTransport(private val api: VmApi,
         }
     }
 
-    override fun pause() {
+    @Synchronized override fun pause() {
         paused = true
+        connectionEpoch++
+        healthTimer?.cancel(false)
         entries.values.forEach { it.timer?.cancel(false) }
         api.pause()
     }
-    override fun resume() {
+    @Synchronized override fun resume() {
         if (closed) return
         api.resume()
         paused = false
+        connectionEpoch++
+        connectionState = VmConnectionState.CHECKING
+        connectionObserver?.invoke(connectionState)
         entries.values.forEach { schedule(it, 0) }
+        scheduleHealth(0, connectionEpoch)
     }
-    override fun close() {
-        closed = true; pause(); api.close(); entries.clear(); io.shutdownNow(); main.removeCallbacksAndMessages(null)
+    @Synchronized override fun close() {
+        closed = true; pause(); api.close(); connectionObserver = null; entries.clear(); io.shutdownNow(); main.removeCallbacksAndMessages(null)
     }
     private class Rejected(message: String) : Exception(message)
 }

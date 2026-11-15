@@ -9,9 +9,9 @@ android {
         applicationId = "dev.unrabbit.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.10.0-dev"
-        testInstrumentationRunner = "android.test.InstrumentationTestRunner"
+        versionCode = 22
+        versionName = "0.12.1-dev"
+        testInstrumentationRunner = "dev.unrabbit.app.SetupQrDeviceProbe"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

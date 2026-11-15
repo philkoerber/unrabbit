@@ -13,24 +13,29 @@
   <img src="docs/assets/settings.png" width="220" alt="Unrabbit settings with QR configuration and orange wheel selection">
 </p>
 
-**Early prototype.** The native Android app connects to an Ubuntu VM through QR-based SSH pairing; the full scan-to-reply flow has been checked in an emulator. Docker is also available for local development. Speech and the default agent's replies are simulated; requests, photo transfers, persistence and recovery are real. A tested r1 installation is still ahead. The screenshots show the actual app, currently in German.
+**Early prototype.** The native Android app connects to an Ubuntu VM through QR-based SSH pairing. Android 14, kiosk mode, in-app Wi-Fi, pairing and a real VM reply have been checked on an r1; broader transport/photo coverage also runs in an emulator. Speech input and the optional demo agent are simulated. Further hardware checks and stock recovery remain in progress. The screenshots show the actual app, currently in German.
 
 ## The idea
 
-One continuous chat, a physical wheel and a morphing mark. Speak with the side button, read the response, keep going. The VM will manage context and tools. The device stays small.
+One continuous chat, a physical wheel and a morphing mark. The intended interaction is to speak with the side button and hear the answer, with read-aloud enabled by default and switchable in settings. Real speech input and playback are still planned. The VM will manage context and tools. The device stays small.
+
+The immediate focus is a reliable r1 → Codex on Ubuntu → reply loop. Email, Notion and research through VM-side MCP servers come later; those integrations are not implemented yet.
 
 The prototype already has:
 
-- Wheel/button navigation, dark mode and live battery, clock and Wi-Fi status.
+- Wheel/button navigation, dark mode and a shared battery, clock, Wi-Fi and verified VM status rail across chat and settings.
 - A continuously morphing logo and quiet transitions.
 - Local photo drafts that accompany the next spoken request.
 - Scan-to-connect setup: pinned SSH, a device-owned key and no on-device connection fields.
+- Network onboarding: direct Wi-Fi selection on a managed device, optional SIM status and Android dialogs for additional network settings.
 - Persistent local history and a reversible emulator kiosk mode.
 - A local Ubuntu worker with durable jobs, photo transfer, cancellation and result recovery after app restart.
 - A three-step Linux terminal wizard with agent/address detection, saved VM settings and a terminal QR.
 - An optional Codex CLI adapter, verified with real text and camera-image replies over remote SSH.
 
 ## Try it
+
+For the device, follow the short [r1 + Ubuntu setup guide](SETUP.md). It links the manual firmware steps and optional VM autostart; no always-on setup computer is needed.
 
 With JDK 21 and Android SDK 35 installed:
 
@@ -39,7 +44,7 @@ cd android
 ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
-Start with the [emulator setup](SETUP.md). Use **↑/↓ for the wheel** and **← for the side button**. Double-press ← to open the photo camera.
+For app development, use the [emulator setup](docs/DEVELOPMENT.md). Use **↑/↓ for the wheel** and **← for the side button**. Double-press ← to open the photo camera.
 
 To develop both sides locally, with Docker running and the debug app installed:
 

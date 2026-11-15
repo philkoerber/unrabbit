@@ -58,10 +58,18 @@ class SetupScannerView(context: Context, private val onResult: (PairingQr) -> Un
     private fun decode() {
         preview.decodeSingle { result ->
             if (active) {
-                val settings = runCatching { SetupQr.parse(result.text) }.getOrNull()
-                if (settings != null) { pauseCamera(); onResult(settings) }
-                else { showError(R.string.scan_invalid); postDelayed(retry, 1200) }
+                acceptDecoded(result.text)
             }
+        }
+    }
+    internal fun acceptDecoded(raw: String) {
+        val result = runCatching { SetupQr.parse(raw) }
+        val settings = result.getOrNull()
+        if (settings != null) { pauseCamera(); onResult(settings) }
+        else {
+            // Never display parser exception text: malformed QR payloads may contain secrets.
+            showError(if (result.exceptionOrNull() is ExpiredSetupQr) R.string.scan_expired else R.string.scan_invalid)
+            postDelayed(retry, 1200)
         }
     }
     fun resumeCamera() {

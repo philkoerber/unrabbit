@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sign
 
 class MainActivity : Activity() {
-    private enum class Page { WELCOME, CHAT, SETTINGS, CAMERA }
+    private enum class Page { WELCOME, CHAT, SETTINGS, PAIRING, NETWORK, CAMERA }
     private val inkColor = 0xfff2f0e8.toInt()
     private val mutedColor = 0xffafb4a8.toInt()
     private val surfaceColor = 0xff171915.toInt()
@@ -43,6 +43,10 @@ class MainActivity : Activity() {
     private var renderedPage: Page? = null
     private var renderedMenu = false
     private var settingsView: SettingsView? = null
+    private var pairingView: PairingView? = null
+    private var pairingReturn = Page.WELCOME
+    private var networkView: NetworkSetupView? = null
+    private var networkReturn = Page.WELCOME
     private var cameraView: PhotoCameraView? = null
     private var returnToRestAfterCamera = false
     private var resumed = false
@@ -107,6 +111,7 @@ class MainActivity : Activity() {
             }
         }
         root.addView(statusRail, FrameLayout.LayoutParams(-1, -1))
+        observeVmConnection()
         deviceStatus = DeviceStatusMonitor(this) { statusRail.status = it }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 33) {
@@ -126,7 +131,7 @@ class MainActivity : Activity() {
         transport.resume()
         DeviceMode.enterIfManaged(this)
         DeviceMode.hideSystemBars(this)
-        settingsView?.resumeCamera()
+        pairingView?.resumeCamera()
         cameraView?.resumeCamera()
         updateLogo(animateStatus = false)
     }
@@ -134,9 +139,9 @@ class MainActivity : Activity() {
     override fun onPause() {
         resumed = false
         transport.pause()
-        if (settingsView?.isPairing == true) { cancelPairing(); settingsView?.showError("Unterbrochen. Bitte erneut scannen.") }
+        if (pairingView?.isPairing == true) { cancelPairing(); pairingView?.showError("Unterbrochen. Bitte erneut scannen.") }
         logo?.setPlaybackActive(false)
-        settingsView?.pauseCamera()
+        pairingView?.pauseCamera()
         cameraView?.pauseCamera()
         abortPress()
         save()
@@ -156,6 +161,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         cameraView?.closeCamera()
+        pairingView?.closeCamera()
         cancelPairing()
         pairingIo.shutdownNow()
         photoIo.shutdown()
@@ -199,13 +205,17 @@ class MainActivity : Activity() {
         root.addView(surface, FrameLayout.LayoutParams(-1, -1))
         navigation.clear()
         settingsView = null
+        pairingView = null
+        networkView = null
         feed = null
         chatNotice = null
-        statusRail.visibility = if (page == Page.WELCOME || page == Page.CAMERA) View.GONE else View.VISIBLE
+        statusRail.visibility = if (page in listOf(Page.WELCOME, Page.CAMERA)) View.GONE else View.VISIBLE
         when (page) {
             Page.WELCOME -> renderWelcome()
             Page.CHAT -> renderChat(follow)
             Page.SETTINGS -> renderSettings()
+            Page.PAIRING -> renderPairing()
+            Page.NETWORK -> renderNetwork()
             Page.CAMERA -> renderCamera()
         }
         if (menu) renderMenu()
@@ -239,20 +249,19 @@ class MainActivity : Activity() {
             setPadding(dp(24), dp(24), dp(24), dp(24))
         }
         column.addView(text("Unrabbit", 28f))
-        column.addView(text(if (transport.identity == null && TransportFactory.supportsDemo) "Lokale Demo\nKeine Mikrofonaufnahme oder VM-Verbindung."
-            else "Sprache wird noch simuliert.", 16f, true).apply {
+        column.addView(text("WLAN oder SIM verbinden.\nDanach deine VM koppeln.", 16f, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(18), 0, dp(24))
         })
-        column.addView(navButton("VM verbinden") {
-            page = Page.SETTINGS; selection = 0; render()
-        })
+        column.addView(navButton("WLAN & SIM") { openNetwork() })
+        column.addView(navButton("VM verbinden") { openPairing() })
         if (TransportFactory.supportsDemo) column.addView(navButton("Demo öffnen") {
             storage.preferences.edit().putBoolean("demoAcknowledged", true).apply()
             page = Page.CHAT
             selection = 0
             render()
         })
+        column.addView(text("Sprache wird noch simuliert.", 12f, true).apply { setPadding(dp(12), dp(12), 0, 0) })
         surface.addView(column, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
     }
 
@@ -353,7 +362,7 @@ class MainActivity : Activity() {
     }
 
     private fun shortClick() {
-        if (settingsView?.handleButton() == true) return
+        if (pairingView?.isScanning == true) return
         if (page == Page.CAMERA) {
             if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) cameraView?.takePhoto()
             else requestPermissions(arrayOf(Manifest.permission.CAMERA), 72)
@@ -368,14 +377,41 @@ class MainActivity : Activity() {
         else { menu = true; selection = 0; render() }
     }
 
+    private fun observeVmConnection() {
+        val client = transport
+        if (client is VmTransport) client.observeConnection { state ->
+            if (transport === client) {
+                statusRail.vmState = state
+                settingsView?.setConnectionState(state)
+            }
+        } else statusRail.vmState = if (PairingStore(this).hasPairing())
+            VmConnectionState.DISCONNECTED else VmConnectionState.UNPAIRED
+    }
+
     private fun renderSettings() {
         val paired = runCatching { PairingStore(this).load() }.getOrNull()
-        settingsView = SettingsView(this, paired?.connection?.host,
-            onPair = { pairVm(it) }, onClose = { closeSettings() }, onRequestScan = { requestSetupScan() }).also { panel ->
+        settingsView = SettingsView(this, paired != null,
+            onClose = { closeSettings() }, onConnect = { openPairing() },
+            onNetwork = { openNetwork() }).also { panel ->
             panel.onSelection = { selection = it; highlightSelection() }
-            panel.onNavigationChanged = { position ->
+            navigation += panel.navigation
+            panel.setConnectionState(statusRail.vmState)
+            surface.addView(panel, FrameLayout.LayoutParams(-1, -1))
+        }
+    }
+
+    private fun openPairing() {
+        pairingReturn = page
+        page = Page.PAIRING; menu = false; selection = 0; render()
+        requestSetupScan()
+    }
+
+    private fun renderPairing() {
+        pairingView = PairingView(this, ::pairVm, ::closePairing, ::requestSetupScan).also { panel ->
+            panel.onSelection = { selection = it; highlightSelection() }
+            panel.onNavigationChanged = {
                 navigation.clear(); navigation += panel.navigation
-                selection = position; highlightSelection(); updateLogo(); DeviceMode.hideSystemBars(this)
+                selection = 0; highlightSelection(); updateLogo(); DeviceMode.hideSystemBars(this)
                 if (panel.isScanning) abortPress()
             }
             navigation += panel.navigation
@@ -383,13 +419,42 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun closePairing() {
+        cancelPairing()
+        page = pairingReturn; selection = 0; render()
+    }
+
+    private fun openNetwork() {
+        networkReturn = page
+        page = Page.NETWORK; selection = 0; render()
+    }
+
+    private fun renderNetwork() {
+        networkView = NetworkSetupView(this,
+            onClose = { closeNetwork() },
+            onSystemSettings = { mobile ->
+                if (!DeviceMode.openNetworkSettings(this, mobile))
+                    Toast.makeText(this, "Verbindungsdialog nicht verfügbar.", Toast.LENGTH_SHORT).show()
+            }).also { panel ->
+            panel.onSelection = { selection = it; highlightSelection() }
+            panel.onNavigationChanged = {
+                navigation.clear(); navigation += panel.navigation
+                selection = 0; highlightSelection()
+            }
+            navigation += panel.navigation
+            surface.addView(panel, FrameLayout.LayoutParams(-1, -1))
+        }
+    }
+
+    private fun closeNetwork() { page = networkReturn; selection = 0; render() }
+
     private fun cancelPairing() {
         pairingGeneration++
         pairingApi?.close(); pairingApi = null
     }
 
     private fun pairVm(invitation: PairingQr) {
-        val panel = settingsView ?: return
+        val panel = pairingView ?: return
         if (session.pending()) { panel.showError("Laufende Anfrage zuerst beenden."); return }
         cancelPairing()
         val generation = pairingGeneration
@@ -405,13 +470,14 @@ class MainActivity : Activity() {
             catch (_: Exception) { "Verbindung fehlgeschlagen. VM-Wizard und Netzwerk prüfen, dann erneut scannen." }
             finally { api.close() }
             handler.post {
-                if (isDestroyed || generation != pairingGeneration || settingsView !== panel) return@post
+                if (isDestroyed || generation != pairingGeneration || pairingView !== panel) return@post
                 pairingApi = null
                 if (error != null) { panel.showError(error); return@post }
                 try { store.save(vm) }
                 catch (_: Exception) { panel.showError("Kopplung konnte nicht gespeichert werden. Erneut scannen."); return@post }
                 transport.close()
                 transport = TransportFactory.create(this, photos)
+                observeVmConnection()
                 if (resumed) transport.resume()
                 storage.preferences.edit().putBoolean("demoAcknowledged", true).apply()
                 save()
@@ -423,7 +489,7 @@ class MainActivity : Activity() {
     }
 
     private fun requestSetupScan() {
-        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) settingsView?.openScanner()
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) pairingView?.openScanner()
         else requestPermissions(arrayOf(Manifest.permission.CAMERA), 71)
     }
 
@@ -461,9 +527,9 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 71 && page == Page.SETTINGS) {
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) settingsView?.openScanner()
-            else settingsView?.showError("Kamerazugriff fehlt.")
+        if (requestCode == 71 && page == Page.PAIRING) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) pairingView?.openScanner()
+            else pairingView?.showError("Kamerazugriff fehlt. Bitte zum Scannen freigeben.")
         }
         if (requestCode == 72 && page == Page.CAMERA) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && resumed) cameraView?.resumeCamera()
@@ -473,8 +539,9 @@ class MainActivity : Activity() {
     }
 
     private fun closeSettings() {
-        cancelPairing()
-        page = Page.CHAT; menu = true; selection = 0; render()
+        val acknowledged = storage.preferences.getBoolean("demoAcknowledged", false)
+        page = if (acknowledged) Page.CHAT else Page.WELCOME
+        menu = acknowledged; selection = 0; render()
     }
 
     private fun submit(text: String) {
@@ -532,7 +599,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateLogo(animateStatus: Boolean = true) {
-        val cameraVisible = page == Page.CAMERA || settingsView?.isScanning == true
+        val cameraVisible = page == Page.CAMERA || pairingView?.isScanning == true
         statusRail.visibility = if (page == Page.WELCOME || cameraVisible) View.GONE else View.VISIBLE
         logo?.setPlaybackActive(resumed && !cameraVisible)
         logo?.importantForAccessibility = if (cameraVisible) View.IMPORTANT_FOR_ACCESSIBILITY_NO else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
@@ -542,7 +609,7 @@ class MainActivity : Activity() {
             animate = animateStatus)
         updateChatVisibility(animate = true)
         logo?.setMode(when {
-            settingsView?.isPairing == true -> LogoMode.WAITING
+            pairingView?.isPairing == true -> LogoMode.WAITING
             recording -> LogoMode.LISTENING
             page == Page.CHAT && session.pending() -> LogoMode.WAITING
             else -> LogoMode.QUIET
@@ -617,7 +684,7 @@ class MainActivity : Activity() {
 
     private fun rotate(amount: Float) {
         if (amount == 0f || page == Page.CAMERA) return
-        if (settingsView?.handleWheel(amount) == true) return
+        if (pairingView?.isScanning == true) return
         if (gesture.held) { actions(gesture.rotate()); scheduleGesture(); return }
         actions(gesture.flushClick()); scheduleGesture()
         if (resting && page == Page.CHAT) { resting = false; updateLogo(); return }
@@ -638,19 +705,22 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Text input keeps ordinary cursor/IME keys; the physical side button remains F8.
+        if (networkView?.editingPassword == true && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_ENTER))
+            return super.dispatchKeyEvent(event)
         // R1's physical keycode is deliberately not assumed. Never intercept POWER.
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_F8 -> {
-                if (settingsView?.isScanning == true) return true
+                if (pairingView?.isScanning == true) return true
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     if (event.repeatCount == 0 && buttonKey == null) {
                         buttonKey = event.keyCode
-                        if (page != Page.SETTINGS && page != Page.CAMERA) press()
+                        if (page !in listOf(Page.SETTINGS, Page.PAIRING, Page.NETWORK, Page.CAMERA)) press()
                     }
                 } else if (event.action == KeyEvent.ACTION_UP && buttonKey == event.keyCode) {
                     buttonKey = null
                     if (event.isCanceled) abortPress()
-                    else if (page == Page.SETTINGS || page == Page.CAMERA) shortClick()
+                    else if (page in listOf(Page.SETTINGS, Page.PAIRING, Page.NETWORK, Page.CAMERA)) shortClick()
                     else release()
                 }
                 return true
@@ -671,7 +741,9 @@ class MainActivity : Activity() {
             gesture.held || gesture.hasPendingClick -> abortPress()
             page == Page.CAMERA -> closeCamera()
             menu -> { menu = false; render() }
-            page == Page.SETTINGS -> { if (settingsView?.handleBack() != true) closeSettings() }
+            page == Page.SETTINGS -> closeSettings()
+            page == Page.PAIRING -> closePairing()
+            page == Page.NETWORK -> { if (networkView?.handleBack() != true) closeNetwork() }
             page == Page.CHAT && !resting -> { resting = true; updateLogo() }
             else -> Unit // The rest screen is the device home; Back must not expose Android.
         }

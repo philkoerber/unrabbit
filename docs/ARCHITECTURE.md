@@ -2,6 +2,8 @@
 
 The device handles interaction; one user-owned Ubuntu VM handles the work. The QR wizard connects the device directly to that VM; an Ubuntu container remains available for local development.
 
+The current product milestone is the r1-to-Codex request/reply loop. Future email, Notion and research integrations will use MCP servers configured on the VM, with their credentials kept there. They are outside the current implementation scope. Speech-provider selection remains open; recording and playback belong on the device, while the VM coordinates speech processing and Codex.
+
 ```mermaid
 flowchart LR
     App["Unrabbit · Android"] -->|"Pinned SSH · device key"| VM["User-owned Ubuntu VM"]

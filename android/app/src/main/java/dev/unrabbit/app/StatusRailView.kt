@@ -33,9 +33,16 @@ class StatusRailView(context: Context) : View(context) {
     var status = DeviceStatus()
         set(value) {
             field = value
-            contentDescription = "Akku ${value.batteryPercent?.let { "$it Prozent" } ?: "unbekannt"}${if (value.charging) ", lädt" else ""}. ${value.hour}:${value.minute}. ${value.wifi.description}."
+            describeStatus()
             invalidate()
         }
+    var vmState = VmConnectionState.UNPAIRED
+        set(value) { field = value; describeStatus(); invalidate() }
+
+    private fun describeStatus() {
+        val value = status
+        contentDescription = "Akku ${value.batteryPercent?.let { "$it Prozent" } ?: "unbekannt"}${if (value.charging) ", lädt" else ""}. ${value.hour}:${value.minute}. ${value.wifi.description}. ${vmState.description}."
+    }
 
     init {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
@@ -157,6 +164,32 @@ class StatusRailView(context: Context) : View(context) {
             WifiStatus.OFF -> canvas.drawLine(3f, 2f, 22f, 23f, ink)
             WifiStatus.DISCONNECTED -> { canvas.drawLine(9f, 18f, 15f, 24f, ink); canvas.drawLine(15f, 18f, 9f, 24f, ink) }
             WifiStatus.UNKNOWN -> { ink.style = Paint.Style.FILL; ink.textSize = 12f; canvas.drawText("?", 9f, 25f, ink) }
+        }
+        canvas.restore()
+
+        // Wi-Fi alone never means VM access: show a server with a check, pending dots or slash.
+        canvas.save()
+        val vmSize = blend(22f, 15f)
+        canvas.translate(blend(restClockX + restClockWidth + 56f, 4f),
+            blend(rowCenterY - 11f, 102f) + transitionArc * 38f)
+        canvas.scale(vmSize / 24, vmSize / 24)
+        ink.color = tone
+        ink.style = Paint.Style.STROKE; ink.strokeWidth = 1.7f
+        canvas.drawRoundRect(3f, 2f, 21f, 19f, 2f, 2f, ink)
+        canvas.drawLine(3f, 10f, 21f, 10f, ink)
+        canvas.drawPoint(7f, 6f, ink)
+        canvas.drawPoint(7f, 14f, ink)
+        when (vmState) {
+            VmConnectionState.CONNECTED -> {
+                ink.color = context.getColor(R.color.unrabbit_accent)
+                shape.reset(); shape.moveTo(12f, 21f); shape.lineTo(16f, 24f); shape.lineTo(23f, 16f)
+                canvas.drawPath(shape, ink)
+            }
+            VmConnectionState.CHECKING -> {
+                ink.style = Paint.Style.FILL
+                for (x in listOf(9f, 14f, 19f)) canvas.drawCircle(x, 23f, 1f, ink)
+            }
+            VmConnectionState.UNPAIRED, VmConnectionState.DISCONNECTED -> canvas.drawLine(1f, 1f, 23f, 23f, ink)
         }
         canvas.restore()
         canvas.restore()

@@ -232,7 +232,7 @@ async def serve(config, terminal=None, config_path=None):
             worker.start(); started = True
             if terminal:
                 terminal.step(3, 'QR scannen')
-                terminal.line('  App: Einstellungen → VM verbinden. Der QR gilt zehn Minuten.')
+                terminal.line('  App: VM verbinden → QR scannen. Der QR gilt zehn Minuten.')
                 terminal.line('  Der QR ist ein Zugangscode. Nicht teilen.')
                 while True:
                     payload = registry.invite(connection)

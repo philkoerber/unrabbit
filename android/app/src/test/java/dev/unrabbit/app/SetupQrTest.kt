@@ -29,11 +29,12 @@ class SetupQrTest {
         assertEquals(fingerprint, invitation.connection.hostKeyFingerprint)
         val context = org.robolectric.RuntimeEnvironment.getApplication()
         var received: PairingQr? = null
-        val screen = SettingsView(context, null, { received = it }, {}, {})
+        val screen = PairingView(context, { received = it }, {}, {})
         screen.applyScan(invitation)
         assertSame(invitation, received)
         assertFalse(PairingStore(context).hasPairing())
-        assertEquals(2, screen.navigation.size)
+        assertTrue(screen.isPairing)
+        assertEquals(listOf("Zurück"), screen.navigation.map { it.first.contentDescription })
         assertEquals("PairingQr(redacted)", invitation.toString())
     }
     @Test fun pythonWizardImagesDecodeWithTheCameraReaderAcrossDifferentPatterns() {
@@ -73,6 +74,21 @@ class SetupQrTest {
         )
         invalid.forEach { assertTrue(runCatching { SetupQr.parse(it) }.isFailure) }
         assertThrows(IllegalArgumentException::class.java) { SetupQr.parse(raw, now = expiry + 1) }
+    }
+    @Test fun expiredInvitationExplainsHowToRetryWithoutDisplayingPayload() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        var paired = false
+        val screen = SetupScannerView(context, { paired = true }, {})
+        val expired = valid.replace(Regex("\"expiresAt\":\\d+"), "\"expiresAt\":1")
+        screen.acceptDecoded(expired)
+        val status = (0 until screen.childCount).map { screen.getChildAt(it) }
+            .filterIsInstance<android.widget.TextView>().single()
+        assertEquals(context.getString(R.string.scan_expired), status.text.toString())
+        assertFalse(paired)
+        screen.acceptDecoded("private-secret-not-a-qr")
+        assertEquals(context.getString(R.string.scan_invalid), status.text.toString())
+        assertFalse(paired)
+        screen.closeCamera()
     }
     @Test fun twoVisibleInvitationsDoNotChooseAnArbitraryVm() {
         val size = 400

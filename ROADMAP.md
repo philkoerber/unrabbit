@@ -1,6 +1,6 @@
 # Roadmap
 
-Unrabbit starts with a small Android frontend and a locally testable Ubuntu service. QR pairing connects the app to its VM; hardware integration comes next.
+Unrabbit starts with a small Android frontend and a locally testable Ubuntu service. The immediate scope is a reliable connection between the r1 and Codex on the user's Ubuntu VM. A real reply already works on the r1; speech and full physical-device validation follow.
 
 ## Working in the emulator
 
@@ -18,16 +18,23 @@ Unrabbit starts with a small Android frontend and a locally testable Ubuntu serv
 
 ## Next
 
-- [ ] Unattended Ubuntu service installation and autostart.
-- [ ] Real microphone input and transcription; optional read-aloud responses.
+- [ ] Complete physical r1 checks of the Codex request/reply loop, including sleep, reconnect and restart without a setup computer.
+- [ ] Real microphone input and transcription; the speech provider has not been selected.
+- [ ] Read replies aloud by default, with a persistent on/off control in settings.
+
+## Later
+
+- [ ] VM-side MCP integrations for email, Notion and research. Keep their configuration and credentials on the VM.
 - [ ] Verify model-driven tool actions and define tool permissions/approval behavior.
+- [ ] Automatic Ubuntu service installation; a manual systemd setup is verified and documented.
 - [ ] Semantic context compaction and routing to the appropriate tools and projects.
 - [ ] Bounded device cache, server history synchronization and retention controls.
 
 ## On the r1
 
-- [ ] Validate access, installation and a recovery procedure on actual hardware.
+- [x] Install Android, Unrabbit and managed Wi-Fi on an r1; pair the VM and receive a real reply.
+- [ ] Validate stock recovery and package a repeatable hardware installer.
 - [ ] Verify the wheel, side button, camera orientation, microphone and speaker.
 - [ ] Measure battery use and tune brightness, display timeout and standby.
 
-No release dates yet. The emulator prototype is available now; a tested r1 conversion is not.
+No release dates yet. The emulator prototype and a manual guide for the tested r1 configuration are available; complete hardware/recovery validation remains open.

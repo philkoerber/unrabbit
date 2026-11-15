@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.UserManager
+import android.provider.Settings
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -20,6 +21,29 @@ class UnrabbitAdminReceiver : DeviceAdminReceiver()
 
 /** Kiosk privileges only exist after explicit device-owner provisioning, never by ordinary install. */
 object DeviceMode {
+    /** Allow only the resolved Android settings package while its network dialog is in front. */
+    fun openNetworkSettings(activity: Activity, mobile: Boolean): Boolean {
+        val actions = if (mobile) listOf(Settings.ACTION_NETWORK_OPERATOR_SETTINGS, Settings.ACTION_WIRELESS_SETTINGS)
+            else if (Build.VERSION.SDK_INT >= 29) listOf(Settings.Panel.ACTION_WIFI, Settings.ACTION_WIFI_SETTINGS)
+            else listOf(Settings.ACTION_WIFI_SETTINGS)
+        for (action in actions) {
+            val intent = Intent(action)
+            val target = activity.packageManager.resolveActivity(intent, PackageManager.MATCH_SYSTEM_ONLY) ?: continue
+            intent.component = ComponentName(target.activityInfo.packageName, target.activityInfo.name)
+            val policy = activity.getSystemService(DevicePolicyManager::class.java)
+            val managed = policy.isDeviceOwnerApp(activity.packageName)
+            try {
+                if (managed) policy.setLockTaskPackages(ComponentName(activity, UnrabbitAdminReceiver::class.java),
+                    arrayOf(activity.packageName, target.activityInfo.packageName))
+                activity.startActivity(intent)
+                return true
+            } catch (_: RuntimeException) {
+                if (managed) policy.setLockTaskPackages(ComponentName(activity, UnrabbitAdminReceiver::class.java), arrayOf(activity.packageName))
+            }
+        }
+        return false
+    }
+
     fun enterIfManaged(activity: Activity) {
         val policy = activity.getSystemService(DevicePolicyManager::class.java)
         if (!policy.isDeviceOwnerApp(activity.packageName)) return

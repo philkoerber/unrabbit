@@ -273,27 +273,28 @@ class MainActivityTest {
         val rows = panel.navigation.map { it.first }
         assertTrue(rows.zipWithNext().all { (a, b) -> a.bottom <= b.top })
         val icons = views(activity).filterIsInstance<MenuIconView>()
-        val cancel = icons.single { it.icon == MenuIcon.CLOSE }
-        assertEquals(2, panel.navigation.size)
+        assertEquals(3, panel.navigation.size)
         assertTrue(icons.none { it.icon == MenuIcon.SAVE })
         assertTrue(views(activity).none { it is EditText })
         shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
-        tap(activity) // VM address directly opens the scanner.
-        assertTrue(panel.isScanning)
-        assertTrue(panel.navigation.isEmpty())
+        tap(activity) // The settings action directly opens the separate scanner flow.
+        val pairing = views(activity).filterIsInstance<PairingView>().single()
+        assertTrue(views(activity).none { it is SettingsView })
+        assertTrue(pairing.isScanning)
+        assertTrue(pairing.navigation.isEmpty())
         assertEquals(View.GONE, views(activity).filterIsInstance<StatusRailView>().single().visibility)
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, views(activity).filterIsInstance<LogoView>().single().importantForAccessibility)
         tap(activity, KeyEvent.KEYCODE_DPAD_DOWN); tap(activity)
-        assertTrue(panel.isScanning)
+        assertTrue(pairing.isScanning)
         assertTrue(LocalStorage(activity).load()!!.messages.isEmpty())
         val close = views(activity).filterIsInstance<MenuIconView>().single { it.contentDescription == "Scan abbrechen" }
         assertFalse(close.isSelected || close.isFocusable)
         close.performClick()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(350))
-        assertFalse(panel.isScanning)
+        assertTrue(views(activity).none { it is PairingView })
         assertTrue(views(activity).none { it is SetupScannerView })
         assertEquals(View.VISIBLE, views(activity).filterIsInstance<StatusRailView>().single().visibility)
-        assertTrue(panel.navigation.first().first.isSelected)
+        assertTrue(views(activity).filterIsInstance<SettingsView>().single().navigation.first().first.isSelected)
         controller.pause().stop().destroy()
     }
 
@@ -388,17 +389,69 @@ class MainActivityTest {
         val activity = controller.get()
         click(activity, "Demo öffnen"); openSettings(activity)
         val panel = views(activity).filterIsInstance<SettingsView>().single()
-        assertEquals(listOf("VM verbinden", "Abbrechen"), panel.navigation.map { it.first.contentDescription.toString() })
+        assertEquals(listOf("VM verbinden", "WLAN & SIM", "Zurück"), panel.navigation.map { it.first.contentDescription.toString() })
         assertTrue(views(activity).none { it is EditText || it.tag in listOf("vm-host", "vm-port", "vm-user", "vm-host-key") })
-        panel.setPairing(true)
-        assertEquals("Abbrechen", panel.navigation.single().first.contentDescription)
-        assertFalse(panel.handleButton())
-        assertFalse(panel.handleWheel(1f))
-        panel.showError("Verbindung fehlgeschlagen.")
-        assertEquals(2, panel.navigation.size)
-        click(activity, "Abbrechen")
+        click(activity, "Zurück")
         assertFalse(PairingStore(activity).hasPairing())
         assertTrue(LocalStorage(activity).load()!!.messages.isEmpty())
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun welcomeConnectOpensScannerInOneTapAndBothBackActionsReturnToWelcome() {
+        shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        repeat(2) { attempt ->
+            click(activity, "VM verbinden")
+            assertTrue(views(activity).filterIsInstance<PairingView>().single().isScanning)
+            assertTrue(views(activity).none { it is SettingsView })
+            if (attempt == 0) click(activity, "Scan abbrechen") else {
+                @Suppress("DEPRECATION")
+                activity.onBackPressed()
+            }
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
+            assertTrue(views(activity).none { it is SettingsView || it is PairingView || it is SetupScannerView })
+            assertTrue(views(activity).filterIsInstance<Button>().any { it.text == "VM verbinden" })
+            assertFalse(LocalStorage(activity).preferences.getBoolean("demoAcknowledged", false))
+        }
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun deniedCameraCanBeRetriedInTheSameFlowWithoutOpeningSettings() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        click(activity, "VM verbinden")
+        activity.onRequestPermissionsResult(71, arrayOf(android.Manifest.permission.CAMERA),
+            intArrayOf(android.content.pm.PackageManager.PERMISSION_DENIED))
+        val pairing = views(activity).filterIsInstance<PairingView>().single()
+        assertFalse(pairing.isScanning)
+        assertEquals(listOf("QR erneut scannen", "Zurück"), pairing.navigation.map { it.first.contentDescription })
+        assertTrue(views(activity).none { it is SettingsView })
+        shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
+        click(activity, "QR erneut scannen")
+        assertTrue(pairing.isScanning)
+        click(activity, "Scan abbrechen")
+        assertFalse(PairingStore(activity).hasPairing())
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun connectionErrorOffersRetryAndReturnsToItsOriginalMenu() {
+        shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        click(activity, "Demo öffnen"); openSettings(activity)
+        val before = LocalStorage(activity).load()
+        click(activity, "VM verbinden")
+        val pairing = views(activity).filterIsInstance<PairingView>().single()
+        pairing.closeCamera(); pairing.setPairing(true)
+        assertEquals(listOf("Zurück"), pairing.navigation.map { it.first.contentDescription })
+        pairing.showError("Verbindung fehlgeschlagen.")
+        click(activity, "QR erneut scannen")
+        assertTrue(pairing.isScanning)
+        click(activity, "Scan abbrechen")
+        assertEquals(1, views(activity).filterIsInstance<SettingsView>().size)
+        assertEquals(before, LocalStorage(activity).load())
+        assertFalse(PairingStore(activity).hasPairing())
         controller.pause().stop().destroy()
     }
 

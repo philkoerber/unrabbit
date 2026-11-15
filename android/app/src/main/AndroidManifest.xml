@@ -6,6 +6,10 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Android requires location permission for SSID discovery; no location fix is requested. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <application
         android:name=".UnrabbitApplication"
         tools:targetApi="33"
@@ -19,6 +23,7 @@
         android:theme="@style/Theme.Unrabbit">
         <activity android:name="com.journeyapps.barcodescanner.CaptureActivity" tools:node="remove" />
         <activity android:name=".MainActivity" android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:lockTaskMode="if_whitelisted">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

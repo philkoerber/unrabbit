@@ -4,7 +4,7 @@ Run the Android emulator and an Ubuntu 24.04 container on the same development c
 
 ## Start both sides
 
-Install Docker with Compose, Python 3.9+ and the Android tools described in [SETUP.md](../SETUP.md). Build/install the debug APK and open **Demo öffnen** once. From the repository root:
+Install Docker with Compose, Python 3.9+ and the Android tools described in the [development guide](../docs/DEVELOPMENT.md). Build/install the debug APK and open **Demo öffnen** once. From the repository root:
 
 ```sh
 python3 scripts/local_vm.py up
@@ -75,7 +75,7 @@ The optional Compose file keeps UID 10001, dropped capabilities, no-new-privileg
 - Cancellation is terminal, including a tombstone for a cancellation arriving before its submission. A late worker result cannot overwrite it.
 - On a service restart, queued work continues; an already-running job becomes `interrupted` and is **not** automatically repeated. This does not promise exactly-once external side effects.
 - Context comes from recent completed server turns, capped at 20 turns / 24,000 text characters. Original records remain intact. Semantic summarization, search and per-project/MCP routing are not implemented yet.
-- The app persists its outbox and backend identity, recovers results after restart and backs off on network errors. It polls only while active and work is outstanding. Old standalone demo history is not uploaded.
+- The app persists its outbox and backend identity, recovers results after restart and backs off on network errors. Job polling runs only while active and work is outstanding; the foreground VM icon also checks authenticated health every 30 seconds. Old standalone demo history is not uploaded.
 
 The default demo container runs as UID 10001 without capabilities, with a read-only root filesystem. Only its data volume and temporary directory are writable. The host port is bound to `127.0.0.1`. HTTP requires the generated bearer credential and server identity. The HTTP development credential is never placed in a QR, command argument or repository file. The SSH wizard’s QR carries a separate single-use enrollment code.
 
