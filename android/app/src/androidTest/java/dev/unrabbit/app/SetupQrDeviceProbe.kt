@@ -7,12 +7,18 @@ import java.io.File
 
 /** Small on-device probe for the real platform JSON implementation, without a test-framework APK. */
 class SetupQrDeviceProbe : Instrumentation() {
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+    private var speech = false
+    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); speech = arguments?.getString("probe") == "speech"; start() }
 
     override fun onStart() {
         val report = Bundle()
         var code = Activity.RESULT_OK
         try {
+            if (speech) {
+                SpeechDeviceCheck.run(this, report)
+                finish(code, report)
+                return
+            }
             val now = System.currentTimeMillis() / 1000
             val raw = """{"type":"unrabbit.setup","version":2,"host":"vm.example.net","port":2222,"user":"device","hostKeyFingerprint":"SHA256:${"A".repeat(43)}","serverId":"12345678-1234-1234-1234-123456789abc","pairingToken":"${"A".repeat(43)}","expiresAt":${now + 600}}"""
             val invitation = SetupQr.parse(raw, now)

@@ -50,6 +50,9 @@ def service_arguments(argv):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "speech-setup":
+        from .speech import setup
+        return setup(argv[1:])
     if argv and argv[0] == "setup":
         from .wizard import main as setup
         return setup(argv[1:])
@@ -81,7 +84,8 @@ def main(argv=None):
         agent = DemoAgent(args.demo_delay) if args.agent == "demo" else CodexAgent(args.workspace or args.state / "workspace", args.executable, private_state=args.state)
         worker = Worker(store, agent)
         try:
-            server = Server((args.listen, args.port), store, worker, config["token"], config["serverId"])
+            from .speech import configured_speech
+            server = Server((args.listen, args.port), store, worker, config["token"], config["serverId"], configured_speech())
         except OSError:
             store.close()
             parser.error(f"Cannot bind {args.listen}:{args.port}. Check whether another service is running.")

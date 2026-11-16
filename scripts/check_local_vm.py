@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in emulator smoke test: appends a demo request and restarts the app, never clears data."""
+"""Guided emulator recovery check: speak one request, then verify restart recovery without clearing data."""
 import argparse
 import hashlib
 import json
@@ -53,9 +53,9 @@ def main():
     previous_ids = {m["id"] for m in before["messages"]}
     stop_app(prefix, parser)
     device("shell", "am", "start", "-n", "dev.unrabbit.app/.MainActivity")
-    time.sleep(1)
-    device("shell", "input", "keyevent", "--duration", "650", "KEYCODE_DPAD_LEFT")
-    deadline = time.monotonic() + 10
+    print("In Unrabbit, hold the side-button substitute (Left), speak a short sentence in the selected language, then release.", flush=True)
+    print("Enable the emulator's host microphone first. Waiting up to two minutes for your request…", flush=True)
+    deadline = time.monotonic() + 120
     request_id = None
     while time.monotonic() < deadline:
         sent = stream()
@@ -69,7 +69,7 @@ def main():
                 if error.code != 404:
                     raise
         time.sleep(.1)
-    assert request_id and request_id in sent["pendingRequestIds"], "No pending request; increase UNRABBIT_DEMO_DELAY for slow emulators"
+    assert request_id and request_id in sent["pendingRequestIds"], "No pending request: check microphone access and selected language; increase UNRABBIT_DEMO_DELAY if the reply completes too quickly"
     stop_app(prefix, parser)
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:

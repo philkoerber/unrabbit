@@ -17,6 +17,8 @@ class SettingsView(
     private val onClose: () -> Unit,
     private val onConnect: () -> Unit,
     private val onNetwork: () -> Unit,
+    private val onLanguage: () -> Unit,
+    language: String,
 ) : FrameLayout(context) {
     val navigation = mutableListOf<Pair<View, () -> Unit>>()
     var onSelection: (Int) -> Unit = {}
@@ -44,6 +46,7 @@ class SettingsView(
         }
         action(if (paired) "VM wechseln" else "VM verbinden", callback = onConnect)
         action("WLAN & SIM", callback = onNetwork)
+        action("Sprache · $language", callback = onLanguage)
         action("Zurück", 12, onClose)
         addView(column, LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply { leftMargin = dp(24); rightMargin = dp(24) })
     }

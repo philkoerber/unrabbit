@@ -13,6 +13,8 @@ from unrabbit_vm.agents import DemoAgent
 from unrabbit_vm.ssh_service import Gateway, Registry
 from unrabbit_vm.server import Worker
 from unrabbit_vm.store import Store
+from unrabbit_vm.speech import SpeechService
+from test_speech import Backend, audio_request
 
 
 class SshTests(unittest.IsolatedAsyncioTestCase):
@@ -137,6 +139,23 @@ class SshTests(unittest.IsolatedAsyncioTestCase):
         for name in ('ssh-host-key', 'client.json', 'devices.json'):
             self.assertEqual(0o600, stat.S_IMODE((self.root / name).stat().st_mode))
         self.assertNotIn(self.invite['pairingToken'], (self.root / 'devices.json').read_text())
+
+    async def test_speech_requires_device_key_and_returns_text_without_creating_job(self):
+        engine = Backend()
+        self.gateway.speech = SpeechService(engine)
+        payload = self.request('POST', '/v1/speech/transcribe', audio_request(language='de'))
+        async with await self.connect(password=self.invite['pairingToken']) as client:
+            denied = await self.rpc(client, 'unrabbit-api', payload)
+            self.assertEqual(403, denied['status'])
+        self.assertEqual([], engine.calls)
+        await self.enroll()
+        async with await self.connect(key=self.device) as client:
+            result = await self.rpc(client, 'unrabbit-api', payload)
+            self.assertEqual(200, result['status'])
+            self.assertEqual({'text': 'Recognized words', 'language': 'de'}, result['body'])
+            health = await self.rpc(client, 'unrabbit-api', self.request())
+            self.assertTrue(health['body']['speech']['ready'])
+        self.assertEqual(0, self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0])
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):

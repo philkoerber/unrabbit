@@ -19,6 +19,7 @@ from .config import write_private
 from .server import Worker
 from .setup_qr import make_qr
 from .store import MAX_BODY_BYTES, Problem, Store, identifier
+from .speech import SpeechService, configured_speech
 
 
 def unique_json(raw):
@@ -85,7 +86,7 @@ class Registry:
         return ' '.join(saved.split()[:2]) == ' '.join(key.export_public_key().decode().split()[:2])
 
 
-def dispatch(store, worker, server_id, request):
+def dispatch(store, worker, server_id, request, speech=None):
     if not isinstance(request, dict) or set(request) != {'serverId', 'method', 'path', 'body'}:
         raise Problem(400, 'Invalid request')
     if request['serverId'] != server_id:
@@ -96,7 +97,10 @@ def dispatch(store, worker, server_id, request):
     if method == 'GET' and body is not None:
         raise Problem(400, 'Unexpected body')
     if method == 'GET' and path == '/v1/health':
-        return {'version': 1, 'agent': worker.agent.name, 'serverId': server_id}
+        return {'version': 1, 'agent': worker.agent.name, 'serverId': server_id,
+                'speech': (speech or SpeechService()).status}
+    if method == 'POST' and path == '/v1/speech/transcribe':
+        return (speech or SpeechService()).transcribe(body)
     if method == 'POST' and path == '/v1/jobs':
         result = store.submit(body)
         worker.wake.set()
@@ -112,8 +116,9 @@ def dispatch(store, worker, server_id, request):
 
 
 class Gateway:
-    def __init__(self, registry, user, store, worker):
+    def __init__(self, registry, user, store, worker, speech=None):
         self.registry, self.user, self.store, self.worker = registry, user, store, worker
+        self.speech = speech or SpeechService()
         self.connections = set()
         self.requests = asyncio.Semaphore(8)
 
@@ -178,7 +183,7 @@ class Gateway:
                         raise Problem(400, 'Invalid enrollment')
                     result = self.registry.enroll(digest, request['publicKey'])
                 else:
-                    result = await asyncio.to_thread(dispatch, self.store, self.worker, self.registry.server_id, request)
+                    result = await asyncio.to_thread(dispatch, self.store, self.worker, self.registry.server_id, request, self.speech)
                     if request['path'] == '/v1/health':
                         self.registry.connected.set()
             status = 200
@@ -223,7 +228,7 @@ async def serve(config, terminal=None, config_path=None):
         store = Store(state / 'unrabbit.sqlite3')
         agent = DemoAgent() if config['agent'] == 'demo' else CodexAgent(Path(config['workspace']), config['executable'], private_state=state)
         worker = Worker(store, agent)
-        gateway = Gateway(registry, connection['user'], store, worker)
+        gateway = Gateway(registry, connection['user'], store, worker, configured_speech())
         listener = None
         started = False
         png_path = Path(config_path).with_suffix('.qr.png') if config_path else None

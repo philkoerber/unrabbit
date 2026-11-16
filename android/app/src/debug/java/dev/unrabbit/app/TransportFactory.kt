@@ -9,6 +9,11 @@ import java.io.File
 /** Installed by the emulator-only developer helper through run-as, never an intent extra. */
 object TransportFactory {
     const val supportsDemo = true
+    internal fun createSpeechApi(context: Context): VmApi? {
+        PairedTransport.speechApi(context)?.let { return it }
+        val file = File(context.noBackupFilesDir, "unrabbit-local.json")
+        return if (file.exists()) HttpApi(LocalVmConfig.parse(file.readText())) else null
+    }
     fun create(context: Context, photos: PhotoStore): ChatTransport {
         PairedTransport.create(context, photos)?.let { return it }
         val file = File(context.noBackupFilesDir, "unrabbit-local.json")

@@ -4,7 +4,8 @@ Single device, single server, one conversation stream. The debug-only HTTP trans
 
 | Request | Result |
 | --- | --- |
-| `GET /v1/health` | Protocol version, server identity and selected agent |
+| `GET /v1/health` | Protocol version, server identity, agent and speech readiness |
+| `POST /v1/speech/transcribe` | Ephemeral audio recognition; returns text/language, creates no job |
 | `POST /v1/jobs` | Persist an idempotent request; return its current state |
 | `GET /v1/jobs/{id}` | Fetch the current state/result; unknown ID returns 404 |
 | `POST /v1/jobs/{id}/cancel` with `{}` | Cancel queued/running work, or create a cancellation tombstone |
@@ -18,6 +19,10 @@ Submission shape:
   "photos": []
 }
 ```
+
+Speech uses exactly `{"format":"aac-adts","language":"en","audio":"<base64>"}`; language is `en` or `de`. Audio must be AAC-LC, 16 kHz mono, with at most 256 KiB of compressed bytes and 30 seconds plus AAC padding. ADTS frame count and headers are checked before decoding. A successful response is `{"text":"recognized words","language":"en"}`; silence returns an empty string. Health includes `speech: {ready, model, languages}`. Missing speech setup returns 503, a busy recognizer 429, malformed audio 400 and excessive duration/size 413.
+
+Speech requests use the same device authentication and server-identity checks as chat. They never persist audio, create an agent job or accept a path/URL. The app discards cancelled/late results and does not retry audio after a connection loss. Recognition already running on the VM may finish after cancellation; it cannot trigger a chat request. Only a subsequent ordinary text/photo job can invoke the agent. The client allows up to 45 seconds for a speech response.
 
 A photo contains only `id` (UUID), `width`, `height` (1–2048) and `jpeg` (base64 bytes). Maximum four photos, 4 MiB each, and a 24 MiB JSON body. JPEG framing is checked; the service does not decode images or independently verify their declared dimensions. No client-selected paths, executable commands, working directories or credentials are accepted in the body. Text is limited to 16,000 characters; at most 32 unfinished jobs may be queued.
 

@@ -13,6 +13,8 @@ Upstream: [IBM Plex](https://github.com/IBM/plex), [Gradle](https://github.com/g
 
 ## Resolved by the build
 
+VM speech uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [CTranslate2](https://github.com/OpenNMT/CTranslate2), PyAV and their dependencies, installed from `vm/requirements-speech.txt`. The multilingual [Whisper base conversion](https://huggingface.co/Systran/faster-whisper-base) is downloaded at a pinned revision by `speech-setup`; faster-whisper includes Silero VAD. These packages and models retain their upstream licenses. No speech weights or native recognition binaries are bundled in the Android APK or checked into this repository.
+
 The app uses [Kotlin](https://github.com/JetBrains/kotlin), [AndroidX / CameraX](https://android.googlesource.com/platform/frameworks/support/) and [ZXing Android Embedded](https://github.com/journeyapps/zxing-android-embedded), including ZXing Core. These components are licensed under Apache 2.0; their versions are specified in the Gradle build files. Test dependencies include JUnit and Robolectric under their respective upstream licenses.
 
 The terminal wizard uses [qrcode](https://github.com/lincolnloop/python-qrcode) and [Pillow](https://github.com/python-pillow/Pillow); these packages are installed separately and are not vendored here.

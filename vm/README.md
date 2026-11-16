@@ -11,7 +11,9 @@ python3 scripts/local_vm.py up
 python3 scripts/local_vm.py attach
 ```
 
-The helper uses `emulator-5572` by default; pass `--serial` for another emulator. Hold **←** to send simulated speech. The reply now comes from the Ubuntu process. Photos remain local drafts until that input completes.
+The helper uses `emulator-5572` by default; pass `--serial` for another emulator. Enable the emulator's host microphone, allow microphone access and select English or German in Unrabbit. Hold **←**, speak after listening starts, then release. The app sends compressed audio to Ubuntu for transcription; the reply also comes from Ubuntu. Photos remain local drafts until that input completes.
+
+The Docker build installs `requirements-speech.txt` and downloads the pinned multilingual Whisper `base` model as the unprivileged runtime user. This needs network access and additional build time/disk space. The resulting image keeps the model under `/opt/unrabbit-model`; recognition makes no hosted speech call. For a normal Ubuntu installation, follow [speech setup](../SETUP.md#3-prepare-your-ubuntu-vm). `UNRABBIT_SPEECH_MODEL` can select an existing local model directory; otherwise setup uses `$XDG_DATA_HOME/unrabbit/speech/base` (or `~/.local/share/unrabbit/speech/base`). Run setup and the service with the same environment.
 
 `up` builds the container and waits for readiness. `attach` verifies that the target is an emulator, adds an ADB reverse connection and privately installs a generated development credential using Android's `run-as`. It restarts the app without clearing its data. A verified QR pairing selects the real SSH transport and takes precedence over this developer transport.
 
@@ -20,7 +22,7 @@ python3 scripts/local_vm.py status
 python3 scripts/check_local_vm.py
 ```
 
-The opt-in smoke test appends one simulated request, includes any waiting photo drafts, stops/restarts the app and verifies result recovery, retained history and exact uploaded photo bytes. It refuses a non-demo agent and saves its report under ignored `private/local-vm-checks/`. For slower emulators, start with `UNRABBIT_DEMO_DELAY=5 python3 scripts/local_vm.py up`.
+The guided recovery test waits up to two minutes for you to speak one request, includes any waiting photo drafts, then stops/restarts the app and verifies result recovery, retained history and exact uploaded photo bytes. It refuses a non-demo agent and saves its report under ignored `private/local-vm-checks/`. For slower emulators, start with `UNRABBIT_DEMO_DELAY=5 python3 scripts/local_vm.py up`.
 
 To return to the standalone app demo and stop the container:
 

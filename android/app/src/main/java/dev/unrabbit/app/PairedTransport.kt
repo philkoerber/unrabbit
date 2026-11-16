@@ -4,6 +4,11 @@ import android.content.Context
 import dev.unrabbit.core.*
 
 internal object PairedTransport {
+    fun speechApi(context: Context): VmApi? {
+        val store = PairingStore(context)
+        if (!store.hasPairing()) return null
+        return SshApi(requireNotNull(store.load()), store::privateKey)
+    }
     fun create(context: Context, photos: PhotoStore): ChatTransport? {
         val store = PairingStore(context)
         if (!store.hasPairing()) return null

@@ -9,13 +9,18 @@ from unrabbit_vm.agents import DemoAgent
 from unrabbit_vm.server import Worker
 from unrabbit_vm.ssh_service import Gateway, Registry
 from unrabbit_vm.store import Store
+from unrabbit_vm.speech import SpeechService
+
+class FixtureSpeech:
+    def transcribe(self, audio, language):
+        return 'SSH speech fixture'
 
 async def main():
     with tempfile.TemporaryDirectory() as tmp:
         registry = Registry(tmp)
         store = Store(Path(tmp) / 'jobs.sqlite3')
         worker = Worker(store, DemoAgent(.01))
-        gateway = Gateway(registry, 'device', store, worker)
+        gateway = Gateway(registry, 'device', store, worker, SpeechService(FixtureSpeech()))
         listener = await gateway.listen('127.0.0.1', 0)
         worker.start()
         try:

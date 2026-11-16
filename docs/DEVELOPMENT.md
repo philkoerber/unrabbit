@@ -22,7 +22,7 @@ cd android
 cd ..
 ```
 
-The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. You can also download the `unrabbit-dev` artifact from a successful GitHub Actions run.
+The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. It bundles no speech model or app-native recognition library. You can also download the `unrabbit-dev` artifact from a successful GitHub Actions run.
 
 ## Run in an emulator
 
@@ -34,14 +34,14 @@ avdmanager create avd --name unrabbit-dev --package 'system-images;android-35;de
 "$ANDROID_HOME/emulator/emulator" -avd unrabbit-dev -port 5572 -skin 480x640 -dpi-device 240 -camera-back virtualscene
 ```
 
-Choose `no` if asked for a custom hardware profile. On an x86-64 host, use the corresponding `x86_64` system image. In another terminal:
+Choose `no` if asked for a custom hardware profile. On an x86-64 host, use the corresponding `x86_64` system image; the tested profile here is ARM64. In another terminal:
 
 ```sh
 adb -s emulator-5572 install -t -r android/app/build/outputs/apk/debug/app-debug.apk
 adb -s emulator-5572 shell am start -n dev.unrabbit.app/.MainActivity
 ```
 
-The `-t` flag is required because this development APK is `testOnly`. On first start, choose **WLAN & SIM** to connect to the internet, then **Zurück** and **VM verbinden** to scan your VM wizard’s QR. If your emulator already has network access, you can go directly to **VM verbinden**. **Demo öffnen** remains available in the debug build for UI development. Speech input is still simulated.
+The `-t` flag is required because this development APK is `testOnly`. On first start, choose **WLAN & SIM** to connect to the internet, then **Zurück**. Choose **Sprache** for English/German input and **VM verbinden** to scan your VM wizard’s QR. If your emulator already has network access, skip network setup. **Demo öffnen** remains available in the debug build for UI development, but speech requires a paired VM or the attached local Ubuntu service below. Enable the emulator's host microphone and allow Android microphone access before testing speech.
 
 ### Network setup
 
@@ -57,13 +57,16 @@ The same compact status rail is visible in chat, settings and network setup. Its
 | --- | --- |
 | ↑ / ↓ | Scroll chat or choose a menu item |
 | ← briefly | Leave the rest screen, open the chat menu or confirm a selection |
-| Hold ←, then release | Simulate speech and submit the example message |
+| Hold ←, speak after listening starts, then release | Record, upload compressed audio to the VM and submit its transcript |
 | ↑ / ↓ while holding ← | Cancel speech without submitting |
+| ← briefly or Back while transcribing | Discard the pending transcript |
 | Double-press ← within 300 ms | Open the photo camera from chat or rest |
 | ← in the photo camera | Capture a local photo draft |
 | Touch X in either camera | Close the camera |
 
 Photos wait in chat until the next completed speech input. A paired VM takes precedence over the optional debug transport below. Release builds require QR pairing to send requests.
+
+Speech uses faster-whisper `base` INT8 and Silero on the VM CPU. Language selection persists in welcome/settings, with English as the default. Recordings stay in memory on both sides, silence submits no chat request, and clips over 30 seconds are discarded. Leaving the foreground stops capture and rejects late transcripts. No speech API key is needed; reply audio is still planned. See [the Android README](../android/README.md) and [VM speech setup](../SETUP.md#3-prepare-your-ubuntu-vm).
 
 ## Local Ubuntu service
 
@@ -75,7 +78,7 @@ python3 scripts/local_vm.py attach
 python3 scripts/check_local_vm.py
 ```
 
-The first two commands start Ubuntu locally and connect the emulator over ADB. The third is an opt-in smoke test: it sends one simulated request (including waiting photos), restarts the app, and checks result recovery without clearing history. It refuses QR-paired devices and requires kiosk mode to be disabled so Android can actually stop the app. Everything uses the offline demo agent by default. See [vm/README.md](../vm/README.md) for details, Codex integration and stopping/detaching the setup. The product's SSH QR fields remain separate from this debug-only connection.
+The first two commands start Ubuntu locally and connect the emulator over ADB. The third is a guided recovery test: speak one request when prompted (including any waiting photos), then the helper restarts the app and checks result recovery without clearing history. It waits up to two minutes for your input. It refuses QR-paired devices and requires kiosk mode to be disabled so Android can actually stop the app. Everything uses the offline demo agent by default. See [vm/README.md](../vm/README.md) for details, Codex integration and stopping/detaching the setup. The product's SSH QR fields remain separate from this debug-only connection.
 
 ## Terminal wizard
 
@@ -84,6 +87,8 @@ On your Ubuntu VM, run from the checkout as a dedicated account **without root o
 ```sh
 python3 -m venv .venv-setup
 .venv-setup/bin/pip install -r scripts/requirements-setup.txt
+.venv-setup/bin/pip install -r vm/requirements-speech.txt
+.venv-setup/bin/python scripts/unrabbit.py speech-setup
 .venv-setup/bin/python scripts/unrabbit.py setup
 ```
 

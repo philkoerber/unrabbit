@@ -7,6 +7,7 @@ from socketserver import TCPServer
 
 from .agents import Cancelled
 from .store import MAX_BODY_BYTES, Problem, identifier
+from .speech import SpeechService
 
 
 class Worker:
@@ -53,8 +54,9 @@ class Server(ThreadingHTTPServer):
         TCPServer.server_bind(self)
         self.server_name, self.server_port = self.server_address[:2]
 
-    def __init__(self, address, store, worker, token, server_id):
+    def __init__(self, address, store, worker, token, server_id, speech=None):
         self.store, self.worker, self.token, self.server_id = store, worker, token, server_id
+        self.speech = speech or SpeechService()
         super().__init__(address, Handler)
 
 
@@ -82,7 +84,10 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get("X-Unrabbit-Server") != self.server.server_id:
                 raise Problem(409, "Wrong server identity")
             if self.command == "GET" and self.path == "/v1/health":
-                result = {"version": 1, "agent": self.server.worker.agent.name, "serverId": self.server.server_id}
+                result = {"version": 1, "agent": self.server.worker.agent.name, "serverId": self.server.server_id,
+                          "speech": self.server.speech.status}
+            elif self.command == "POST" and self.path == "/v1/speech/transcribe":
+                result = self.server.speech.transcribe(self.body())
             elif self.command == "POST" and self.path == "/v1/jobs":
                 result = self.server.store.submit(self.body())
                 self.server.worker.wake.set()

@@ -1,6 +1,6 @@
 # Roadmap
 
-Unrabbit starts with a small Android frontend and a locally testable Ubuntu service. The immediate scope is a reliable connection between the r1 and Codex on the user's Ubuntu VM. A real reply already works on the r1; speech and full physical-device validation follow.
+Unrabbit starts with a small Android frontend and a locally testable Ubuntu service. The immediate scope is a reliable connection between the r1 and Codex on the user's Ubuntu VM. Speech recognition uses Whisper `base` on the VM; broader voice and physical-device validation follow.
 
 ## Working in the emulator
 
@@ -19,8 +19,11 @@ Unrabbit starts with a small Android frontend and a locally testable Ubuntu serv
 ## Next
 
 - [ ] Complete physical r1 checks of the Codex request/reply loop, including sleep, reconnect and restart without a setup computer.
-- [ ] Real microphone input and transcription; the speech provider has not been selected.
-- [ ] Read replies aloud by default, with a persistent on/off control in settings.
+- [x] Integrate microphone input, compressed audio upload and VM Whisper `base`, with silence rejection and cancellation.
+- [x] Spoken language: English or German during setup and editable later in settings.
+- [ ] Reply-audio setup: local synthesis or optional OpenAI, independently of speech recognition.
+- [ ] Read replies aloud by default, with a persistent on/off control in settings and private VM-side entry for an optional OpenAI key.
+- [ ] Tune end-to-end recognition latency and validate broader accents, background noise, longer utterances and mobile connectivity.
 
 ## Later
 
@@ -33,8 +36,12 @@ Unrabbit starts with a small Android frontend and a locally testable Ubuntu serv
 ## On the r1
 
 - [x] Install Android, Unrabbit and managed Wi-Fi on an r1; pair the VM and receive a real reply.
+- [x] Benchmark native CPU transcription, including English and German recordings captured on the r1. This is separate from app integration.
+- [x] Verify the earlier on-device Whisper integration and a live microphone → transcript → VM reply test; this measured prototype was subsequently replaced by VM recognition.
+- [x] Verify r1 AAC → paired SSH → VM `base` with both microphone clips, silence, bounded duration and cancellation; measure complete transcription latency.
+- [x] Confirm a live side-button recording → VM transcription → chat reply on the r1 with the device owner.
 - [ ] Validate stock recovery and package a repeatable hardware installer.
-- [ ] Verify the wheel, side button, camera orientation, microphone and speaker.
+- [ ] Complete wheel/button, camera orientation and speaker checks; broaden the successful live microphone test.
 - [ ] Measure battery use and tune brightness, display timeout and standby.
 
 No release dates yet. The emulator prototype and a manual guide for the tested r1 configuration are available; complete hardware/recovery validation remains open.

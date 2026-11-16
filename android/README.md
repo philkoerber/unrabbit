@@ -17,7 +17,9 @@ Native Kotlin, Android Views and Canvas. No Compose or WebView. Start with the [
 | Minimum SDK | 28 |
 | JDK | 17 or 21; CI uses 21 |
 
-The minimum SDK is an app requirement, not a statement about supported r1 firmware. The development build is `0.12.1-dev`, marked `testOnly`, and uses a local debug signing key.
+The minimum SDK is an app requirement, not a statement about supported r1 firmware. The development build is `0.14.0-dev`, marked `testOnly`, and uses a local debug signing key. No app-owned native speech library, NDK or CMake is required.
+
+The app contains no speech model. It records through Android's microphone API, compresses with the platform AAC encoder and asks the paired VM to transcribe. The VM needs the separate [speech setup](../SETUP.md#3-prepare-your-ubuntu-vm).
 
 ## Code map
 
@@ -31,12 +33,17 @@ The minimum SDK is an app requirement, not a statement about supported r1 firmwa
 - `PairingView`: direct scan, connection progress and retry, returning to its caller on cancellation; no manual connection fields.
 - `PairingStore` / `SshApi` / `VmTransport`: encrypted device identity, pinned SSH enrollment and the persistent request outbox.
 - `LogoView` / `LogoMotion`: compatible paths, continuous morphing and lifecycle-aware frame scheduling.
+- `SpeechInput` / `MicrophoneCapture`: foreground push-to-talk, bounded PCM capture and cancellation-safe turn delivery.
+- `SpeechAudioEncoder` / `VmSpeechRecognizer`: in-memory AAC-LC compression and an ephemeral authenticated VM speech request.
+- `SpeechPreferences` / `SpeechLanguageView`: persistent English/German selection in welcome and settings.
 
 ## Data and device boundaries
 
 History is stored in `no_backup/demo-stream.json` (schema 4), including pending request IDs and backend identity. Older schemas migrate without replaying work. Network requests recover only for the same backend; standalone demo requests are not replayed. JPEGs live in `no_backup/photos/`, with a maximum edge of 2048 pixels and camera metadata removed. Both are excluded from Android backup. Paired endpoint metadata and the encrypted device key live in `no_backup/paired-vm.json` and `device-key.enc`; Android Keystore holds the wrapping key. The temporary QR code is not saved. The private local development credential is installed separately into `no_backup/unrabbit-local.json` by the emulator helper.
 
-The app requests camera access and network/Wi-Fi status read access. Both builds have internet permission for SSH. Only debug builds include the optional loopback HTTP transport and its credential loader; release builds require pairing. There is no microphone permission: speech remains simulated. Photo capture, QR decoding and the local Ubuntu transport are real; the default service agent uses deterministic replies.
+The app requests camera, microphone and network/Wi-Fi status access. Both builds have internet permission for SSH. Only debug builds include the optional loopback HTTP transport and its credential loader; release builds require pairing. Only the optional demo agent produces deterministic replies.
+
+The microphone records 16 kHz mono PCM in memory for at most 30 seconds. AAC-LC at 32 kbit/s is sent to `/v1/speech/transcribe` through the pinned SSH connection, or the existing loopback API in a configured debug build. Audio is never saved on the device or VM. The VM applies Silero and Whisper `base`; the transcript becomes ordinary chat text and follows the existing durable transport. Leaving the foreground, turning the wheel while recording or cancelling recognition invalidates the turn; late VM results cannot submit. Audio uploads are not automatically retried. Standalone UI demo mode has no recognizer; connect a VM for speech. Read-aloud is not implemented yet.
 
 Power is not intercepted. The app does not hold a wake lock or keep the display awake. Installation, network setup, VM pairing and a reply are checked on the r1; complete physical input, camera rotation and power checks remain pending.
 

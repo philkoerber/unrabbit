@@ -59,6 +59,7 @@ object DeviceMode {
         policy.setKeyguardDisabled(admin, true)
         policy.addUserRestriction(admin, UserManager.DISALLOW_CREATE_WINDOWS)
         policy.setPermissionGrantState(admin, activity.packageName, Manifest.permission.CAMERA, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+        policy.setPermissionGrantState(admin, activity.packageName, Manifest.permission.RECORD_AUDIO, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
         val locked = activity.getSystemService(KeyguardManager::class.java).isKeyguardLocked
         val mode = activity.getSystemService(ActivityManager::class.java).lockTaskModeState
         if (!locked && mode == ActivityManager.LOCK_TASK_MODE_NONE && policy.isLockTaskPermitted(activity.packageName)) activity.startLockTask()

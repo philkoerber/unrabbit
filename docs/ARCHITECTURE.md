@@ -2,18 +2,32 @@
 
 The device handles interaction; one user-owned Ubuntu VM handles the work. The QR wizard connects the device directly to that VM; an Ubuntu container remains available for local development.
 
-The current product milestone is the r1-to-Codex request/reply loop. Future email, Notion and research integrations will use MCP servers configured on the VM, with their credentials kept there. They are outside the current implementation scope. Speech-provider selection remains open; recording and playback belong on the device, while the VM coordinates speech processing and Codex.
+The current product milestone is the r1-to-Codex request/reply loop. Future email, Notion and research integrations will use MCP servers configured on the VM, with their credentials kept there. They are outside the current implementation scope. The device records audio; the VM transcribes it and runs the agent. Reply audio remains planned.
 
 ```mermaid
 flowchart LR
-    App["Unrabbit · Android"] -->|"Pinned SSH · device key"| VM["User-owned Ubuntu VM"]
+    App["Unrabbit · Android microphone + AAC"] -->|"Pinned SSH · audio"| STT["Ubuntu VM · Silero + Whisper base"]
+    STT -->|"Recognized text"| App
+    App -->|"Pinned SSH · text + photos"| VM["Ubuntu chat service"]
     VM --> DB["SQLite · jobs, messages, photos"]
     VM --> Worker["Ordered worker + bounded context"]
     Worker --> Demo["Offline demo agent"]
     Worker -. "optional adapter" .-> Codex["Codex CLI · read-only"]
 ```
 
-`DemoTransport` remains available in debug builds without setup. The debug-only `VmHttpTransport` connects to the real local worker. Speech input is still simulated.
+`DemoTransport` remains available in debug builds for UI development, but speech requires a configured VM. The debug-only `VmHttpTransport` connects to the local Ubuntu worker and uses its authenticated speech endpoint.
+
+## Speech
+
+Foreground push-to-talk captures up to 30 seconds of 16 kHz mono PCM in device memory. Android's platform encoder produces AAC-LC at 32 kbit/s. A separate, ephemeral request sends this audio over the existing pinned SSH protocol. The VM uses CPU INT8 faster-whisper `base` and a Silero speech-presence check, retaining the complete utterance when speech is present. It returns text without creating an agent job. Only then does the app submit recognized text and waiting photos through the durable chat transport. Audio is not saved on the device or VM and is not sent to a hosted speech provider.
+
+Welcome and settings offer an explicit spoken language, English by default or German, independently of future reply audio. This skips automatic language detection; it does not shrink the model. The r1 benchmark held vocabulary hints constant: explicit language reduced `base` recognition from roughly eleven–twelve seconds to six seconds on the two microphone clips, before silence detection. Automatic language switching is outside the initial scope.
+
+`speech-setup` downloads a revision-pinned model into the service account's data directory. The service loads it once at startup, without runtime model downloads, and accepts one recognition at a time. Missing setup returns 503; concurrent recognition returns 429. The API validates format, language, compressed size and AAC frame count before decoding, bounding audio to 30 seconds plus encoder padding. It accepts no file paths or remote URLs. The Android app contains no native recognition library or speech weights.
+
+Each recording has its own cancellation identity. Leaving the foreground or cancelling stops capture, closes the speech connection and drops late callbacks. Already-started inference may finish on the VM, but it cannot start Codex or submit a chat request. Audio uploads are not queued or automatically retried; a failed upload requires a new recording. This differs from durable text/photo jobs, which recover after reconnect. Network availability, upload time and shared VM load now affect speech latency.
+
+Reply audio will offer local synthesis by default and optional OpenAI with a user-provided API key. Choosing OpenAI for read-aloud will not change the transcription path. The proposed credential flow uses private input in the VM wizard and keeps the key on the VM, out of the pairing QR, device storage, agent context and logs. Other speech providers can follow later. Specific models, voices and local synthesis placement are still to be selected; none of this flow is implemented. OpenAI integration must use the [current official audio guidance](https://developers.openai.com/api/docs/guides/text-to-speech) when implemented.
 
 ## Device
 

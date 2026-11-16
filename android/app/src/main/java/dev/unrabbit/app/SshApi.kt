@@ -99,7 +99,9 @@ internal class SshApi(private val vm: PairedVm, private val privateKey: () -> By
     override fun request(method: String, path: String, body: JSONObject?): Pair<Int, JSONObject> {
         if (suspended) throw IOException("Paused")
         val session = active?.takeIf { it.isConnected } ?: connect()
-        return try { execute(session, "unrabbit-api", JSONObject().put("serverId", vm.serverId)
+        return try {
+            session.timeout = if (path == "/v1/speech/transcribe") 45_000 else 15_000
+            execute(session, "unrabbit-api", JSONObject().put("serverId", vm.serverId)
             .put("method", method).put("path", path).put("body", body ?: JSONObject.NULL)) }
         catch (error: Exception) {
             disconnect()

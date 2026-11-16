@@ -43,6 +43,11 @@ class SshApiTest {
             api = SshApi(vm) { bytes.copyOf() }
             api.pair(invitation)
             val id = UUID.randomUUID().toString()
+            val voice = JSONObject().put("format", "aac-adts").put("language", "en")
+                .put("audio", java.util.Base64.getEncoder().encodeToString(byteArrayOf(-1, -15, 96, 64, 1, 31, -4, 0)))
+            val spoken = api.request("POST", "/v1/speech/transcribe", voice)
+            assertEquals(200, spoken.first)
+            assertEquals("SSH speech fixture", spoken.second.getString("text"))
             val photo = JSONObject().put("id", UUID.randomUUID().toString()).put("width", 8).put("height", 8)
                 .put("jpeg", java.util.Base64.getEncoder().encodeToString(byteArrayOf(-1, -40, 1, 2, -1, -39)))
             val job = JSONObject().put("id", id).put("text", "SSH integration").put("photos", JSONArray().put(photo))

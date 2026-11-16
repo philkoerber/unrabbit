@@ -12,6 +12,8 @@ import uuid
 from unrabbit_vm.agents import Cancelled, CodexAgent, DemoAgent
 from unrabbit_vm.server import Server, Worker
 from unrabbit_vm.store import MAX_BODY_BYTES, Problem, Store
+from unrabbit_vm.speech import SpeechService
+from test_speech import Backend, audio_request
 
 
 def request(text="Eine Idee", photos=None):
@@ -128,6 +130,15 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(409, self.call("GET", "/v1/health", **{"X-Unrabbit-Server": "other"})[0])
         self.assertEqual(400, self.call("GET", "/v1/health", Origin="http://example.net")[0])
         self.assertEqual("demo", self.call("GET", "/v1/health")[1]["agent"])
+
+    def test_speech_http_has_same_auth_and_never_creates_chat_jobs(self):
+        engine = Backend(); self.server.speech = SpeechService(engine)
+        body = audio_request()
+        self.assertEqual(401, self.call('POST', '/v1/speech/transcribe', body, Authorization='Bearer wrong')[0])
+        self.assertEqual([], engine.calls)
+        self.assertEqual((200, {'text': 'Recognized words', 'language': 'en'}),
+                         self.call('POST', '/v1/speech/transcribe', body))
+        self.assertEqual(0, self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0])
 
     def test_real_http_round_trip_returns_result_after_client_disconnect(self):
         payload = request(photos=[photo()])

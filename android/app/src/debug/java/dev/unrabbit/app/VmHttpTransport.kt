@@ -38,7 +38,7 @@ internal data class LocalVmConfig(val endpoint: String, val token: String, val s
 internal class VmHttpTransport(config: LocalVmConfig, photoFile: (PhotoAttachment) -> File) :
     VmTransport(HttpApi(config), photoFile)
 
-private class HttpApi(private val config: LocalVmConfig) : VmApi {
+internal class HttpApi(private val config: LocalVmConfig) : VmApi {
     override val identity = config.serverId
     @Volatile private var paused = true
     @Volatile private var connection: HttpURLConnection? = null
@@ -49,7 +49,7 @@ private class HttpApi(private val config: LocalVmConfig) : VmApi {
         try {
             conn.requestMethod = method
             conn.instanceFollowRedirects = false
-            conn.connectTimeout = 5000; conn.readTimeout = 5000
+            conn.connectTimeout = 5000; conn.readTimeout = if (path == "/v1/speech/transcribe") 45_000 else 5000
             conn.setRequestProperty("Authorization", "Bearer ${config.token}")
             conn.setRequestProperty("X-Unrabbit-Server", config.serverId)
             if (body != null) {

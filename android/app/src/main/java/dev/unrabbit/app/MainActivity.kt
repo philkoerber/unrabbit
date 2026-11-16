@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sign
 
 class MainActivity : Activity() {
-    private enum class Page { WELCOME, CHAT, SETTINGS, PAIRING, NETWORK, CAMERA }
+    private enum class Page { WELCOME, CHAT, SETTINGS, PAIRING, NETWORK, CAMERA, LANGUAGE }
     private val inkColor = 0xfff2f0e8.toInt()
     private val mutedColor = 0xffafb4a8.toInt()
     private val surfaceColor = 0xff171915.toInt()
@@ -33,6 +33,10 @@ class MainActivity : Activity() {
     private lateinit var session: ChatSession
     private lateinit var transport: ChatTransport
     private lateinit var photos: PhotoStore
+    private lateinit var speech: SpeechInput
+    private lateinit var speechPreferences: SpeechPreferences
+    private var languageReturn = Page.WELCOME
+    private var transcribing = false
     private val pairingIo = Executors.newSingleThreadExecutor()
     @Volatile private var pairingApi: SshApi? = null
     private var pairingGeneration = 0
@@ -76,6 +80,8 @@ class MainActivity : Activity() {
         regular = resources.getFont(R.font.plex_regular)
         storage = LocalStorage(this)
         photos = PhotoStore(this)
+        speechPreferences = SpeechPreferences(this)
+        speech = (application as UnrabbitApplication).createSpeechInput()
         transport = TransportFactory.create(this, photos)
         val snapshot = storage.load()
         val recover = transport.identity != null && snapshot?.backendId == transport.identity
@@ -144,6 +150,7 @@ class MainActivity : Activity() {
         pairingView?.pauseCamera()
         cameraView?.pauseCamera()
         abortPress()
+        cancelSpeech()
         save()
         if (page == Page.CHAT) {
             resting = true
@@ -155,7 +162,7 @@ class MainActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus) abortPress()
+        if (!hasFocus) { abortPress(); cancelSpeech() }
         else DeviceMode.hideSystemBars(this)
     }
 
@@ -163,6 +170,7 @@ class MainActivity : Activity() {
         cameraView?.closeCamera()
         pairingView?.closeCamera()
         cancelPairing()
+        speech.close()
         pairingIo.shutdownNow()
         photoIo.shutdown()
         handler.removeCallbacksAndMessages(null)
@@ -217,6 +225,7 @@ class MainActivity : Activity() {
             Page.PAIRING -> renderPairing()
             Page.NETWORK -> renderNetwork()
             Page.CAMERA -> renderCamera()
+            Page.LANGUAGE -> renderLanguage()
         }
         if (menu) renderMenu()
         if (selectedIcon != null) navigation.indexOfFirst { (it.first as? MenuIconView)?.icon == selectedIcon }
@@ -254,6 +263,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(18), 0, dp(24))
         })
         column.addView(navButton("WLAN & SIM") { openNetwork() })
+        column.addView(navButton("Sprache · ${speechPreferences.language.label}") { openLanguage() })
         column.addView(navButton("VM verbinden") { openPairing() })
         if (TransportFactory.supportsDemo) column.addView(navButton("Demo öffnen") {
             storage.preferences.edit().putBoolean("demoAcknowledged", true).apply()
@@ -261,7 +271,7 @@ class MainActivity : Activity() {
             selection = 0
             render()
         })
-        column.addView(text("Sprache wird noch simuliert.", 12f, true).apply { setPadding(dp(12), dp(12), 0, 0) })
+        column.addView(text("Seitentaste halten zum Sprechen.", 12f, true).apply { setPadding(dp(12), dp(12), 0, 0) })
         surface.addView(column, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
     }
 
@@ -362,6 +372,7 @@ class MainActivity : Activity() {
     }
 
     private fun shortClick() {
+        if (transcribing) { cancelSpeech(showNotice = true); return }
         if (pairingView?.isScanning == true) return
         if (page == Page.CAMERA) {
             if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) cameraView?.takePhoto()
@@ -392,12 +403,29 @@ class MainActivity : Activity() {
         val paired = runCatching { PairingStore(this).load() }.getOrNull()
         settingsView = SettingsView(this, paired != null,
             onClose = { closeSettings() }, onConnect = { openPairing() },
-            onNetwork = { openNetwork() }).also { panel ->
+            onNetwork = { openNetwork() }, onLanguage = { openLanguage() },
+            language = speechPreferences.language.label).also { panel ->
             panel.onSelection = { selection = it; highlightSelection() }
             navigation += panel.navigation
             panel.setConnectionState(statusRail.vmState)
             surface.addView(panel, FrameLayout.LayoutParams(-1, -1))
         }
+    }
+
+    private fun openLanguage() {
+        languageReturn = page
+        page = Page.LANGUAGE; selection = 0; render()
+    }
+
+    private fun renderLanguage() {
+        val close = { page = languageReturn; selection = 0; render() }
+        val panel = SpeechLanguageView(this, speechPreferences.language, { language ->
+            speechPreferences.language = language
+            close()
+        }, close)
+        panel.onSelection = { selection = it; highlightSelection() }
+        navigation += panel.navigation
+        surface.addView(panel, FrameLayout.LayoutParams(-1, -1))
     }
 
     private fun openPairing() {
@@ -494,7 +522,7 @@ class MainActivity : Activity() {
     }
 
     private fun openCamera() {
-        if (page != Page.CHAT || menu) return
+        if (page != Page.CHAT || menu || recording || transcribing) return
         if (session.draftPhotos.size >= 4) {
             resting = false; notice = "Bilder zuerst mit einer Nachricht senden."; noticeRevision++; render(); return
         }
@@ -534,6 +562,11 @@ class MainActivity : Activity() {
         if (requestCode == 72 && page == Page.CAMERA) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && resumed) cameraView?.resumeCamera()
             else cameraView?.showError("Kamerazugriff fehlt.")
+        }
+        if (requestCode == 73 && page == Page.CHAT) {
+            notice = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+                "Zum Sprechen die Seitentaste erneut halten." else "Mikrofonzugriff fehlt. Bitte zum Sprechen freigeben."
+            noticeRevision++; resting = false; render()
         }
         DeviceMode.hideSystemBars(this)
     }
@@ -611,6 +644,7 @@ class MainActivity : Activity() {
         logo?.setMode(when {
             pairingView?.isPairing == true -> LogoMode.WAITING
             recording -> LogoMode.LISTENING
+            transcribing -> LogoMode.WAITING
             page == Page.CHAT && session.pending() -> LogoMode.WAITING
             else -> LogoMode.QUIET
         })
@@ -658,27 +692,58 @@ class MainActivity : Activity() {
                 GestureAction.SHORT_CLICK -> shortClick()
                 GestureAction.DOUBLE_CLICK -> openCamera()
                 GestureAction.START_RECORDING -> {
-                    if (page != Page.CHAT) return@forEach
+                    if (page != Page.CHAT || transcribing || !resumed) return@forEach
+                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 73)
+                        return@forEach
+                    }
                     if (menu) { menu = false; render() }
                     returnToRestAfterRecording = resting
                     resting = false
-                    recording = true
-                    updateLogo()
+                    speech.start(speechPreferences.language, ::speechEvent)
                 }
                 GestureAction.SEND_RECORDING -> if (recording) {
-                    recording = false
-                    submit(when (session.draftPhotos.size) {
-                        0 -> "Ich habe eine Idee für ein kleines Radio."
-                        1 -> "Was fällt dir auf diesem Bild auf?"
-                        else -> "Was fällt dir auf diesen Bildern auf?"
-                    })
+                    speech.finish()
                 }
                 GestureAction.CANCEL_RECORDING -> {
                     if (recording) resting = returnToRestAfterRecording
-                    recording = false
-                    updateLogo()
+                    cancelSpeech()
                 }
             }
+        }
+    }
+
+    private fun speechEvent(event: SpeechEvent) {
+        if (isDestroyed || !resumed || page != Page.CHAT) return
+        when (event) {
+            SpeechEvent.Recording -> { recording = true; notice = null; noticeRevision++; render(animate = false) }
+            SpeechEvent.Transcribing -> {
+                recording = false; transcribing = true
+                notice = "Erkenne Sprache …"; noticeRevision++; render(animate = false)
+            }
+            is SpeechEvent.Text -> { recording = false; transcribing = false; submit(event.text) }
+            SpeechEvent.NoSpeech, SpeechEvent.Failed, SpeechEvent.TooLong, SpeechEvent.Unavailable -> {
+                recording = false; transcribing = false; resting = false
+                notice = when (event) {
+                    SpeechEvent.NoSpeech -> "Keine Sprache erkannt."
+                    SpeechEvent.TooLong -> "Aufnahme zu lang. Bitte höchstens 30 Sekunden sprechen."
+                    SpeechEvent.Unavailable -> "VM-Spracherkennung nicht verfügbar. Verbindung und VM-Einrichtung prüfen."
+                    else -> "Spracherkennung fehlgeschlagen. Bitte erneut sprechen."
+                }
+                noticeRevision++; render(animate = false)
+            }
+        }
+    }
+
+    private fun cancelSpeech(showNotice: Boolean = false) {
+        val wasActive = recording || transcribing
+        val hadNotice = notice != null
+        speech.cancel()
+        recording = false; transcribing = false
+        if (wasActive) {
+            notice = if (showNotice) "Aufnahme verworfen." else null
+            noticeRevision++
+            if (page == Page.CHAT && (showNotice || hadNotice)) render(animate = false) else updateLogo()
         }
     }
 
@@ -715,12 +780,12 @@ class MainActivity : Activity() {
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     if (event.repeatCount == 0 && buttonKey == null) {
                         buttonKey = event.keyCode
-                        if (page !in listOf(Page.SETTINGS, Page.PAIRING, Page.NETWORK, Page.CAMERA)) press()
+                        if (page !in listOf(Page.SETTINGS, Page.PAIRING, Page.NETWORK, Page.CAMERA, Page.LANGUAGE)) press()
                     }
                 } else if (event.action == KeyEvent.ACTION_UP && buttonKey == event.keyCode) {
                     buttonKey = null
                     if (event.isCanceled) abortPress()
-                    else if (page in listOf(Page.SETTINGS, Page.PAIRING, Page.NETWORK, Page.CAMERA)) shortClick()
+                    else if (page in listOf(Page.SETTINGS, Page.PAIRING, Page.NETWORK, Page.CAMERA, Page.LANGUAGE)) shortClick()
                     else release()
                 }
                 return true
@@ -739,11 +804,13 @@ class MainActivity : Activity() {
     private fun back() {
         when {
             gesture.held || gesture.hasPendingClick -> abortPress()
+            transcribing -> cancelSpeech(showNotice = true)
             page == Page.CAMERA -> closeCamera()
             menu -> { menu = false; render() }
             page == Page.SETTINGS -> closeSettings()
             page == Page.PAIRING -> closePairing()
             page == Page.NETWORK -> { if (networkView?.handleBack() != true) closeNetwork() }
+            page == Page.LANGUAGE -> { page = languageReturn; selection = 0; render() }
             page == Page.CHAT && !resting -> { resting = true; updateLogo() }
             else -> Unit // The rest screen is the device home; Back must not expose Android.
         }
