@@ -1,8 +1,9 @@
 <resources>
     <string name="app_name">Unrabbit Dev</string>
-    <string name="scan_hint">Einrichtungs-QR scannen</string>
-    <string name="scan_invalid">Kein gültiger Unrabbit-QR.</string>
-    <string name="scan_expired">QR abgelaufen. Bitte den aktuellen Code vom VM-Wizard scannen.</string>
-    <string name="scan_camera_unavailable">Kamera nicht verfügbar.</string>
-    <string name="photo_unavailable">Foto nicht verfügbar</string>
+    <string name="scan_hint">Scan setup QR</string>
+    <string name="scan_invalid">Invalid Unrabbit QR.</string>
+    <string name="scan_expired">QR expired. Scan the current code from the VM wizard.</string>
+    <string name="scan_camera_unavailable">Camera unavailable.</string>
+    <string name="photo_unavailable">Photo unavailable</string>
+    <string name="photo_expired">Photo deleted after 7 days</string>
 </resources>

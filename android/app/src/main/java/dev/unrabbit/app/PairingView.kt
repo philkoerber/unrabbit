@@ -30,7 +30,7 @@ internal class PairingView(
     var onNavigationChanged: () -> Unit = {}
     private var scanner: SetupScannerView? = null
     private val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    private val status = label("Kamera wird geöffnet …", 15f).apply {
+    private val status = label("Opening camera …", 15f).apply {
         tag = "pairing-status"; setTextColor(0xffafb4a8.toInt())
         setPadding(dp(16), dp(12), dp(12), dp(20))
         accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_POLITE
@@ -41,7 +41,7 @@ internal class PairingView(
         isClickable = true; isFocusableInTouchMode = true
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         defaultFocusHighlightEnabled = false
-        column.addView(label("VM verbinden", 24f).apply { setPadding(dp(16), 0, 0, 0) })
+        column.addView(label("Connect VM", 24f).apply { setPadding(dp(16), 0, 0, 0) })
         column.addView(status)
         fun action(text: String, callback: () -> Unit) {
             val row = SettingsActionView(context, text)
@@ -50,8 +50,8 @@ internal class PairingView(
             items += row to invoke
             column.addView(row, LinearLayout.LayoutParams(-1, -2))
         }
-        action("QR erneut scannen", onRequestScan)
-        action("Zurück", onClose)
+        action("Scan QR again", onRequestScan)
+        action("Back", onClose)
         addView(column, LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply { leftMargin = dp(24); rightMargin = dp(24) })
     }
 
@@ -74,7 +74,7 @@ internal class PairingView(
         column.visibility = VISIBLE
         items.first().first.isEnabled = !active
         items.first().first.visibility = if (active) GONE else VISIBLE
-        if (active) status.text = "Verbinde …"
+        if (active) status.text = "Connecting …"
         onNavigationChanged()
     }
 

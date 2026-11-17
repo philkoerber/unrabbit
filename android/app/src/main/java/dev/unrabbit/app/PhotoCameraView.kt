@@ -35,7 +35,7 @@ class PhotoCameraView(context: Context, private val store: PhotoStore, private v
     private val previewView = PreviewView(context).apply {
         implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         scaleType = PreviewView.ScaleType.FILL_CENTER
-        contentDescription = "Kameravorschau"
+        contentDescription = "Camera preview"
     }
     private val status = TextView(context).apply {
         textSize = 14f; setTextColor(0xffafb4a8.toInt()); typeface = resources.getFont(R.font.plex_regular)
@@ -53,16 +53,16 @@ class PhotoCameraView(context: Context, private val store: PhotoStore, private v
 
     init {
         tag = "unrabbit-camera"
-        isClickable = true // Consume preview touches; never pass them to the chat/logo below.
+        isClickable = true // Consume preview touches; never pass them to the chat below.
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         registry.currentState = Lifecycle.State.CREATED
-        setBackgroundColor(0xff171915.toInt())
+        setBackgroundColor(android.graphics.Color.BLACK)
         addView(previewView, LayoutParams(-1, -1))
         previewView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> bindCamera() }
         addView(status, LayoutParams(-1, dp(64), Gravity.CENTER_VERTICAL).apply {
             leftMargin = dp(24); rightMargin = dp(24)
         })
-        addOverlayCloseControl("Kamera schließen", onClose)
+        addOverlayCloseControl("Close camera", onClose)
     }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()
 
@@ -71,21 +71,21 @@ class PhotoCameraView(context: Context, private val store: PhotoStore, private v
     fun resumeCamera() {
         if (closed) return
         if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            showError("Kamerazugriff fehlt."); return
+            showError("Camera access required."); return
         }
         active = true
         registry.currentState = Lifecycle.State.RESUMED
         if (capture != null || initializing) return
         if (provider != null) { bindCamera(); return }
         initializing = true
-        showError("Kamera …")
+        showError("Opening camera …")
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             initializing = false
             if (!closed) try {
                 provider = future.get()
                 bindCamera()
-            } catch (_: Exception) { showError("Kamera nicht verfügbar.") }
+            } catch (_: Exception) { showError("Camera unavailable.") }
         }, main)
     }
 
@@ -105,10 +105,10 @@ class PhotoCameraView(context: Context, private val store: PhotoStore, private v
             preview = livePreview; capture = imageCapture
             camera.cameraInfo.cameraState.observe(this) { state ->
                 ready = state.type == CameraState.Type.OPEN && state.error == null
-                if (state.error != null) showError("Kamera nicht verfügbar.")
+                if (state.error != null) showError("Camera unavailable.")
                 else if (ready && !busy) status.visibility = GONE
             }
-        } catch (_: Exception) { showError("Kamera nicht verfügbar.") }
+        } catch (_: Exception) { showError("Camera unavailable.") }
     }
 
     fun takePhoto() {
@@ -116,7 +116,7 @@ class PhotoCameraView(context: Context, private val store: PhotoStore, private v
         val camera = capture
         if (!ready || camera == null) { resumeCamera(); return }
         val temporary = try { store.newCaptureFile() } catch (_: Exception) {
-            showError("Foto konnte nicht gespeichert werden."); return
+            showError("Photo could not be saved."); return
         }
         busy = true
         val attempt = ++generation
@@ -133,7 +133,7 @@ class PhotoCameraView(context: Context, private val store: PhotoStore, private v
                             else {
                                 busy = false
                                 if (photo != null) onPhoto(photo)
-                                else showError("Foto konnte nicht gespeichert werden.")
+                                else showError("Photo could not be saved.")
                             }
                         }
                     }
@@ -143,7 +143,7 @@ class PhotoCameraView(context: Context, private val store: PhotoStore, private v
                     main.execute {
                         if (!closed && attempt == generation) {
                             busy = false
-                            showError("Aufnahme fehlgeschlagen. Bitte erneut auslösen.")
+                            showError("Capture failed. Try again.")
                         }
                     }
                 }

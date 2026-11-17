@@ -16,6 +16,21 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class LocalStorageTest {
+    @Test fun legacyPhotoAgeComesFromOriginalFileAndSurvivesDeletionAndRestart() {
+        val id = java.util.UUID.randomUUID().toString()
+        val photo = File(context.noBackupFilesDir, "photos/$id.jpg").apply {
+            parentFile!!.mkdirs(); writeText("image"); setLastModified(1_700_000_000_000L)
+        }
+        File(context.noBackupFilesDir, "demo-stream.json").writeText("""{"version":4,"messages":[
+            {"id":"photo-message","role":"USER","text":"","photos":[{"id":"$id","width":32,"height":24}]}]}""")
+        val storage = LocalStorage(context)
+        val migrated = storage.load()!!
+        assertEquals(photo.lastModified(), migrated.messages.single().photos.single().capturedAt)
+        storage.save(migrated)
+        photo.delete()
+        assertEquals(migrated, LocalStorage(context).load())
+        assertTrue(ChatSession(migrated).draftPhotos.isEmpty())
+    }
     private val context get() = RuntimeEnvironment.getApplication()
 
     @Test fun legacyChatsMergeOnceWithoutLosingMessagesOrOverwritingTheOriginal() {

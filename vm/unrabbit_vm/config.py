@@ -18,34 +18,34 @@ def default_state_path():
 def validate_config(value):
     fields = {"version", "agent", "executable", "workspace", "state", "port", "connection"}
     if not isinstance(value, dict) or set(value) != fields or type(value["version"]) is not int or value["version"] not in (1, 2):
-        raise ValueError("Unbekanntes VM-Konfigurationsformat.")
+        raise ValueError("Unknown VM configuration format.")
     if value["agent"] not in ("demo", "codex"):
-        raise ValueError("Für diesen Agent gibt es noch keinen Adapter.")
+        raise ValueError("This agent does not have an adapter yet.")
     for key in ("workspace", "state"):
         if not isinstance(value[key], str) or not Path(value[key]).is_absolute() or any(ord(c) < 32 for c in value[key]):
-            raise ValueError(f"{key}: einen absoluten Pfad angeben.")
+            raise ValueError(f"{key}: enter an absolute path.")
     executable = value["executable"]
     if value["agent"] == "demo":
         if executable is not None:
-            raise ValueError("Demo benötigt kein CLI.")
+            raise ValueError("Demo does not need a CLI.")
     elif not isinstance(executable, str) or not Path(executable).is_absolute() or any(ord(c) < 32 for c in executable):
-        raise ValueError("Codex benötigt einen absoluten CLI-Pfad.")
+        raise ValueError("Codex needs an absolute CLI path.")
     if type(value["port"]) is not int or not 1024 <= value["port"] <= 65535:
-        raise ValueError("Interner Dienst-Port muss zwischen 1024 und 65535 liegen.")
+        raise ValueError("Internal service port must be between 1024 and 65535.")
     public = value["connection"]
     keys = {"type", "version", "host", "port", "user", "hostKeyFingerprint"}
     if value["version"] == 2:
         keys.add("serverId")
     if not isinstance(public, dict) or set(public) != keys:
-        raise ValueError("Ungültige Verbindungseinstellungen.")
+        raise ValueError("Invalid connection settings.")
     expected = connection_payload(public["host"], public["port"], public["user"], public["hostKeyFingerprint"])
     if value["version"] == 2:
         import uuid
         if not public["hostKeyFingerprint"] or public["port"] < 1024 or str(uuid.UUID(public["serverId"])) != public["serverId"]:
-            raise ValueError("Ungültige SSH-Identität.")
+            raise ValueError("Invalid SSH identity.")
         expected.update(version=2, serverId=public["serverId"])
     if type(public["version"]) is not int or public != expected:
-        raise ValueError("Unbekanntes QR-Format.")
+        raise ValueError("Unknown QR format.")
     return value
 
 
@@ -54,11 +54,11 @@ def load_config(path):
         value = {}
         for key, item in pairs:
             if key in value:
-                raise ValueError("Doppeltes Konfigurationsfeld.")
+                raise ValueError("Duplicate configuration field.")
             value[key] = item
         return value
     if Path(path).stat().st_size > 16384:
-        raise ValueError("VM-Konfiguration ist zu groß.")
+        raise ValueError("VM configuration is too large.")
     return validate_config(json.loads(Path(path).read_text(), object_pairs_hook=unique))
 
 

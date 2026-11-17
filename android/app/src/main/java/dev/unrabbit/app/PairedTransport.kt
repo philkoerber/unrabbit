@@ -15,7 +15,7 @@ internal object PairedTransport {
         return try {
             val vm = requireNotNull(store.load())
             VmTransport(SshApi(vm, store::privateKey), photos::file)
-        } catch (_: Exception) { ConnectionRequiredTransport("Kopplung nicht lesbar. VM erneut per QR verbinden.") }
+        } catch (_: Exception) { ConnectionRequiredTransport("Pairing could not be read. Pair the VM again by QR.") }
     }
 }
 

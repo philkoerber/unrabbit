@@ -42,7 +42,7 @@ internal class NetworkSetupController(
     val managed get() = policy?.isDeviceOwnerApp(context.packageName) == true
     private val timeout = Runnable {
         pendingNetwork = null
-        onMessage("Nicht verbunden. Passwort und WLAN prüfen, dann erneut versuchen.")
+        onMessage("Not connected. Check the password and Wi-Fi, then try again.")
     }
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -55,7 +55,7 @@ internal class NetworkSetupController(
                     intent.getIntExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, -1) == WifiManager.ERROR_AUTHENTICATING) {
                     pendingNetwork = null
                     handler.removeCallbacks(timeout)
-                    onMessage("WLAN-Anmeldung fehlgeschlagen. Passwort prüfen.")
+                    onMessage("Wi-Fi sign-in failed. Check the password.")
                 }
             }
         }
@@ -103,22 +103,22 @@ internal class NetworkSetupController(
         val info = try { wifi?.connectionInfo } catch (_: SecurityException) { null }
         val name = info?.ssid?.takeUnless { it == WifiManager.UNKNOWN_SSID }?.removeSurrounding("\"")
         val wifiText = when {
-            wifiConnected -> name?.let { "WLAN · $it" } ?: "WLAN verbunden"
-            wifi?.isWifiEnabled == false -> "WLAN ausgeschaltet"
-            else -> "WLAN nicht verbunden"
+            wifiConnected -> name?.let { "Wi-Fi · $it" } ?: "Wi-Fi connected"
+            wifi?.isWifiEnabled == false -> "Wi-Fi off"
+            else -> "Wi-Fi disconnected"
         }
         val telephony = context.getSystemService(TelephonyManager::class.java)
         val simState = try { telephony?.simState ?: TelephonyManager.SIM_STATE_UNKNOWN }
             catch (_: SecurityException) { TelephonyManager.SIM_STATE_UNKNOWN }
         val sim = when (simState) {
             TelephonyManager.SIM_STATE_ABSENT -> ""
-            TelephonyManager.SIM_STATE_PIN_REQUIRED -> "SIM gesperrt · PIN erforderlich"
-            TelephonyManager.SIM_STATE_PUK_REQUIRED -> "SIM gesperrt · PUK erforderlich"
-            TelephonyManager.SIM_STATE_NETWORK_LOCKED -> "SIM durch Anbieter gesperrt"
+            TelephonyManager.SIM_STATE_PIN_REQUIRED -> "SIM locked · PIN required"
+            TelephonyManager.SIM_STATE_PUK_REQUIRED -> "SIM locked · PUK required"
+            TelephonyManager.SIM_STATE_NETWORK_LOCKED -> "SIM locked by carrier"
             TelephonyManager.SIM_STATE_READY ->
                 if (connected && capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true)
-                    "Mobilfunk verbunden" else "SIM bereit"
-            else -> "SIM nicht verfügbar"
+                    "Mobile data connected" else "SIM ready"
+            else -> "SIM unavailable"
         }
         onStatus(NetworkSetupStatus(wifiText, sim, connected,
             simState !in listOf(TelephonyManager.SIM_STATE_ABSENT, TelephonyManager.SIM_STATE_UNKNOWN)))
@@ -131,7 +131,7 @@ internal class NetworkSetupController(
 
     /** Only explicitly provisioned device owners may use Android's direct Wi-Fi configuration API. */
     fun scan() {
-        if (!managed || wifi == null) { onMessage("WLAN bitte im Verbindungsdialog auswählen."); return }
+        if (!managed || wifi == null) { onMessage("Select Wi-Fi in network settings."); return }
         try {
             val admin = ComponentName(context, UnrabbitAdminReceiver::class.java)
             for (permission in listOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) {
@@ -140,11 +140,11 @@ internal class NetworkSetupController(
             }
             // Android requires Location enabled to discover SSIDs; we never request a location fix.
             if (Build.VERSION.SDK_INT >= 30) policy.setLocationEnabled(admin, true)
-            if (!wifi.isWifiEnabled && !wifi.setWifiEnabled(true)) { onMessage("WLAN konnte nicht eingeschaltet werden."); return }
-            onMessage("WLANs werden gesucht …")
+            if (!wifi.isWifiEnabled && !wifi.setWifiEnabled(true)) { onMessage("Could not turn on Wi-Fi."); return }
+            onMessage("Searching for Wi-Fi …")
             readNetworks()
-            if (!wifi.startScan()) onMessage("Zuletzt gefundene WLANs. Erneute Suche ist gleich möglich.")
-        } catch (_: SecurityException) { onMessage("WLAN-Suche nicht freigegeben. Den Android-Verbindungsdialog verwenden.") }
+            if (!wifi.startScan()) onMessage("Recent Wi-Fi networks. You can scan again shortly.")
+        } catch (_: SecurityException) { onMessage("Wi-Fi scanning not allowed. Use Android network settings.") }
     }
 
     private fun readNetworks() {
@@ -154,13 +154,13 @@ internal class NetworkSetupController(
                 NearbyWifi(it.SSID, security(it.capabilities), it.level)
             }.sortedByDescending { it.signal }.distinctBy { it.name to it.security }
             onNetworks(networks)
-        } catch (_: SecurityException) { onMessage("WLAN-Suche braucht die Standortfreigabe von Android.") }
+        } catch (_: SecurityException) { onMessage("Wi-Fi scanning needs Android location permission.") }
     }
 
     fun connect(network: NearbyWifi, password: String): Boolean {
         if (!managed || wifi == null || network.security == WifiSecurity.SYSTEM) return false
         if (network.security == WifiSecurity.WPA2 && !validPassword(password)) {
-            onMessage("Das WLAN-Passwort braucht 8–63 Zeichen oder 64 Hex-Zeichen.")
+            onMessage("Wi-Fi passwords need 8–63 characters or 64 hexadecimal digits.")
             return false
         }
         try {
@@ -173,14 +173,14 @@ internal class NetworkSetupController(
                 }
             }
             val id = wifi.addNetwork(config)
-            if (id < 0) { onMessage("WLAN konnte nicht gespeichert werden."); return false }
+            if (id < 0) { onMessage("Wi-Fi network could not be saved."); return false }
             pendingNetwork = id
-            if (!wifi.enableNetwork(id, true)) { pendingNetwork = null; onMessage("WLAN konnte nicht verbunden werden."); return false }
+            if (!wifi.enableNetwork(id, true)) { pendingNetwork = null; onMessage("Could not connect to Wi-Fi."); return false }
             handler.removeCallbacks(timeout)
             handler.postDelayed(timeout, 30_000)
-            onMessage("Verbinde mit ${network.name} …")
+            onMessage("Connecting to ${network.name} …")
             return true
-        } catch (_: SecurityException) { onMessage("WLAN-Verbindung nicht freigegeben."); return false }
+        } catch (_: SecurityException) { onMessage("Wi-Fi connection not allowed."); return false }
     }
 
     companion object {

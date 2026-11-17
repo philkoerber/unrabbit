@@ -25,12 +25,13 @@ class PhotoStore(context: Context) {
         val bitmap = decode(source, 2048)
         try {
             check(directory.isDirectory || directory.mkdirs()) { "Photo storage unavailable" }
-            val photo = PhotoAttachment(UUID.randomUUID().toString(), bitmap.width, bitmap.height)
+            val photo = PhotoAttachment(UUID.randomUUID().toString(), bitmap.width, bitmap.height, System.currentTimeMillis())
             val destination = AtomicFile(file(photo))
             val stream = destination.startWrite()
             try {
                 check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)) { "Photo encoding failed" }
                 destination.finishWrite(stream)
+                check(file(photo).setLastModified(photo.capturedAt)) { "Photo timestamp unavailable" }
             } catch (error: Exception) {
                 destination.failWrite(stream)
                 throw error
@@ -39,8 +40,19 @@ class PhotoStore(context: Context) {
         } finally { bitmap.recycle() }
     }
 
-    fun thumbnail(photo: PhotoAttachment): Bitmap? = runCatching { decode(ImageDecoder.createSource(file(photo)), 512) }.getOrNull()
+    fun thumbnail(photo: PhotoAttachment): Bitmap? {
+        if (photo.isExpired(System.currentTimeMillis())) { discard(photo); return null }
+        return runCatching { decode(ImageDecoder.createSource(file(photo)), 512) }.getOrNull()
+    }
     fun discard(photo: PhotoAttachment) { file(photo).delete() }
+
+    /** Also remove abandoned camera/atomic-write files; reads never renew their age. */
+    fun pruneExpired(now: Long = System.currentTimeMillis()): Int {
+        val candidates = directory.listFiles().orEmpty().toList() + cache.listFiles().orEmpty().filter {
+            it.name.startsWith("unrabbit-capture-") && it.extension == "jpg"
+        }
+        return candidates.count { it.isFile && now - it.lastModified() >= PhotoAttachment.RETENTION_MILLIS && it.delete() }
+    }
 
     private fun decode(source: ImageDecoder.Source, maxEdge: Int): Bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
         decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE

@@ -19,6 +19,8 @@ class SettingsView(
     private val onNetwork: () -> Unit,
     private val onLanguage: () -> Unit,
     language: String,
+    readAloud: Boolean,
+    private val onReadAloud: () -> Unit,
 ) : FrameLayout(context) {
     val navigation = mutableListOf<Pair<View, () -> Unit>>()
     var onSelection: (Int) -> Unit = {}
@@ -34,7 +36,7 @@ class SettingsView(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         defaultFocusHighlightEnabled = false
         val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        column.addView(label("Einstellungen", 24f).apply { setPadding(dp(16), 0, 0, dp(4)) })
+        column.addView(label("Settings", 24f).apply { setPadding(dp(16), 0, 0, dp(4)) })
         column.addView(status)
         fun action(text: String, space: Int = 0, callback: () -> Unit) {
             val index = navigation.size
@@ -44,10 +46,11 @@ class SettingsView(
             navigation += row to callback
             column.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(space) })
         }
-        action(if (paired) "VM wechseln" else "VM verbinden", callback = onConnect)
-        action("WLAN & SIM", callback = onNetwork)
-        action("Sprache · $language", callback = onLanguage)
-        action("Zurück", 12, onClose)
+        action(if (paired) "Change VM" else "Connect VM", callback = onConnect)
+        action("Wi-Fi & SIM", callback = onNetwork)
+        action("Language · $language", callback = onLanguage)
+        action(if (readAloud) "Read aloud · On" else "Read aloud · Off", callback = onReadAloud)
+        action("Back", 12, onClose)
         addView(column, LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply { leftMargin = dp(24); rightMargin = dp(24) })
     }
 

@@ -22,8 +22,8 @@ internal class SpeechLanguageView(context: Context, current: SpeechLanguage,
             setTextColor(0xfff2f0e8.toInt()); includeFontPadding = false
             setPadding(dp(16), 0, 0, dp(16))
         }
-        column.addView(label("Sprache", 24f))
-        column.addView(label("Für deine gesprochenen Nachrichten.\nAktuell: ${current.label}", 14f))
+        column.addView(label("Language", 24f))
+        column.addView(label("For your voice messages.\nCurrent: ${current.label}", 14f))
         fun action(title: String, callback: () -> Unit) {
             val index = navigation.size
             val row = SettingsActionView(context, title).apply { setOnClickListener { onSelection(index); callback() } }
@@ -31,7 +31,7 @@ internal class SpeechLanguageView(context: Context, current: SpeechLanguage,
             column.addView(row, LinearLayout.LayoutParams(-1, -2))
         }
         SpeechLanguage.entries.forEach { language -> action(language.label) { onChoose(language) } }
-        action("Zurück", onClose)
+        action("Back", onClose)
         addView(column, LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply { leftMargin = dp(24); rightMargin = dp(24) })
     }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()

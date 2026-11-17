@@ -41,17 +41,17 @@ adb -s emulator-5572 install -t -r android/app/build/outputs/apk/debug/app-debug
 adb -s emulator-5572 shell am start -n dev.unrabbit.app/.MainActivity
 ```
 
-The `-t` flag is required because this development APK is `testOnly`. On first start, choose **WLAN & SIM** to connect to the internet, then **Zurück**. Choose **Sprache** for English/German input and **VM verbinden** to scan your VM wizard’s QR. If your emulator already has network access, skip network setup. **Demo öffnen** remains available in the debug build for UI development, but speech requires a paired VM or the attached local Ubuntu service below. Enable the emulator's host microphone and allow Android microphone access before testing speech.
+The `-t` flag is required because this development APK is `testOnly`. On first start, choose **Wi-Fi & SIM** to connect to the internet, then **Back**. Choose **Language** for English/German input and **Connect VM** to scan your VM wizard’s QR. If your emulator already has network access, skip network setup. **Open demo** remains available in the debug build for UI development, but speech requires a paired VM or the attached local Ubuntu service below. Enable the emulator's host microphone and allow Android microphone access before testing speech.
 
 ### Network setup
 
-**WLAN & SIM** is also available from the app's settings. On an explicitly provisioned device-owner installation, Unrabbit lists nearby Wi-Fi networks and passes the selected network and password directly to Android's Wi-Fi store. The app does not save passwords in its own data or send them to the VM. WPA/WPA2 personal and open networks are supported directly; enterprise, WPA3-only and other configurations open Android's network dialog. A WPA2 connection has been verified on the physical r1.
+**Wi-Fi & SIM** is also available from the app's settings. On an explicitly provisioned device-owner installation, Unrabbit lists nearby Wi-Fi networks and passes the selected network and password directly to Android's Wi-Fi store. The app does not save passwords in its own data or send them to the VM. WPA/WPA2 personal and open networks are supported directly; enterprise, WPA3-only and other configurations open Android's network dialog. A WPA2 connection has been verified on the physical r1.
 
-Android requires location permission and enabled Location services to discover Wi-Fi network names. The managed app enables these when **WLAN auswählen** is used; it does not request geographic coordinates. An ordinary APK installation has no device-owner privileges and uses Android's Wi-Fi panel instead. Installing an APK alone never grants device-owner privileges.
+Android requires location permission and enabled Location services to discover Wi-Fi network names. The managed app enables these when **Choose Wi-Fi** is used; it does not request geographic coordinates. An ordinary APK installation has no device-owner privileges and uses Android's Wi-Fi panel instead. Installing an APK alone never grants device-owner privileges.
 
 The SIM step is optional. Without a card, the SIM status and mobile-network action are hidden. With a card, the app shows its available/locked state and offers the Android mobile-network settings. PIN/PUK entry, carrier setup and cellular data have not been verified on the r1; Unrabbit does not implement its own PIN/PUK submission.
 
-The same compact status rail is visible in chat, settings and network setup. Its server icon shows a check after a successful authenticated VM health response, dots while checking and a slash when unpaired or unreachable. Health is checked on resume and every 30 seconds while the app is active; this does not submit a chat request or call a model.
+The same compact status rail is visible in chat, settings and network setup. Its terminal icon shows an orange dot after a successful authenticated VM health response, a hollow dot while checking and a slash when unpaired or unreachable. Health is checked on resume and every 30 seconds while the app is active; this does not submit a chat request or call a model.
 
 | Input | Action |
 | --- | --- |
@@ -66,7 +66,7 @@ The same compact status rail is visible in chat, settings and network setup. Its
 
 Photos wait in chat until the next completed speech input. A paired VM takes precedence over the optional debug transport below. Release builds require QR pairing to send requests.
 
-Speech uses faster-whisper `base` INT8 and Silero on the VM CPU. Language selection persists in welcome/settings, with English as the default. Recordings stay in memory on both sides, silence submits no chat request, and clips over 30 seconds are discarded. Leaving the foreground stops capture and rejects late transcripts. No speech API key is needed; reply audio is still planned. See [the Android README](../android/README.md) and [VM speech setup](../SETUP.md#3-prepare-your-ubuntu-vm).
+Speech uses faster-whisper `base` INT8 and Silero on the VM CPU. Language selection persists in welcome/settings, with English as the default. Recordings stay in memory on both sides, silence submits no chat request, and clips over 30 seconds are discarded. Leaving the foreground stops capture and rejects late transcripts. No speech API key is needed. Reply audio uses VM-local Piper with in-memory playback; run `tts-setup` in the same service environment and use Settings → Read aloud to toggle it. See [the Android README](../android/README.md) and [VM speech setup](../SETUP.md#3-prepare-your-ubuntu-vm).
 
 ## Local Ubuntu service
 
@@ -94,9 +94,9 @@ python3 -m venv .venv-setup
 
 1. Choose the detected agent. Currently Codex and Demo have adapters.
 2. Confirm the reachable VM address, Unrabbit SSH port (default **2222**) and workspace.
-3. In the app, choose **VM verbinden** and scan the QR. Pairing and the connection check happen automatically. No address, port or key is entered on the device.
+3. In the app, choose **Connect VM** and scan the QR. Pairing and the connection check happen automatically. No address, port or key is entered on the device.
 
-The wizard starts the real service before displaying the QR. It reports **Verbunden** only after the app authenticates with its device-owned key and verifies the service identity. Keep the foreground process running; Ctrl+C stops it. To restart an already paired service:
+The wizard starts the real service before displaying the QR. It reports **Connected** only after the app authenticates with its device-owned key and verifies the service identity. Keep the foreground process running; Ctrl+C stops it. To restart an already paired service:
 
 ```sh
 .venv-setup/bin/python scripts/unrabbit.py run

@@ -39,7 +39,7 @@ def detect_connection():
             ipaddress.ip_address(fields[0])
             host, port = usable_address(fields[2]), int(fields[3])
             if host and 1 <= int(fields[1]) <= 65535 and 1 <= port <= 65535:
-                return ConnectionHint(host, port, "SSH-Verbindung")
+                return ConnectionHint(host, port, "SSH connection")
         except ValueError:
             pass
     # UDP connect selects a local route/address; no datagram is sent, no DNS is used.
@@ -50,7 +50,7 @@ def detect_connection():
                 probe.connect(destination)
                 host = usable_address(probe.getsockname()[0])
                 if host:
-                    return ConnectionHint(host, 22, "Netzwerk")
+                    return ConnectionHint(host, 22, "Network")
         except OSError:
             continue
     return None

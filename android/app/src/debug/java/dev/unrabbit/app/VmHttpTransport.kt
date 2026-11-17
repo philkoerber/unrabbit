@@ -49,7 +49,7 @@ internal class HttpApi(private val config: LocalVmConfig) : VmApi {
         try {
             conn.requestMethod = method
             conn.instanceFollowRedirects = false
-            conn.connectTimeout = 5000; conn.readTimeout = if (path == "/v1/speech/transcribe") 45_000 else 5000
+            conn.connectTimeout = 5000; conn.readTimeout = if (path.startsWith("/v1/speech/")) 45_000 else 5000
             conn.setRequestProperty("Authorization", "Bearer ${config.token}")
             conn.setRequestProperty("X-Unrabbit-Server", config.serverId)
             if (body != null) {

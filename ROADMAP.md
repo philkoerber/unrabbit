@@ -21,8 +21,9 @@ Unrabbit starts with a small Android frontend and a locally testable Ubuntu serv
 - [ ] Complete physical r1 checks of the Codex request/reply loop, including sleep, reconnect and restart without a setup computer.
 - [x] Integrate microphone input, compressed audio upload and VM Whisper `base`, with silence rejection and cancellation.
 - [x] Spoken language: English or German during setup and editable later in settings.
-- [ ] Reply-audio setup: local synthesis or optional OpenAI, independently of speech recognition.
-- [ ] Read replies aloud by default, with a persistent on/off control in settings and private VM-side entry for an optional OpenAI key.
+- [x] VM-local Piper reply audio with English/German female voices, bounded prefetch and interruption.
+- [x] Read fresh replies aloud by default with a persistent on/off control in settings; no replay after sleep/restart.
+- [ ] Optional hosted reply voices and private VM-side API-key entry.
 - [ ] Tune end-to-end recognition latency and validate broader accents, background noise, longer utterances and mobile connectivity.
 
 ## Later

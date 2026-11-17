@@ -13,10 +13,10 @@ class DemoTransport : ChatTransport {
         val task = Runnable {
             callbacks.remove(request.id)
             val answer = when {
-                request.photos.isNotEmpty() -> "Bilder und Nachricht sind zusammen vorgemerkt. Bildauswertung kommt mit der VM-Verbindung."
-                request.text.contains("radio", ignoreCase = true) -> "Ein Radio für Geschichten. Welche Geschichte würdest du als Erstes hören wollen?"
-                request.text.contains("raus", ignoreCase = true) -> "Wohin zieht es dich: ans Wasser oder in den Wald?"
-                else -> "Erzähl weiter. Was daran interessiert dich besonders?"
+                request.photos.isNotEmpty() -> "Photos and your message are queued together. Connect your VM to analyze images."
+                request.text.contains("radio", ignoreCase = true) -> "A radio for stories. Which story would you like to hear first?"
+                request.text.contains("outside", ignoreCase = true) -> "Where would you like to go: the water or the woods?"
+                else -> "Tell me more. What interests you most about it?"
             }
             onResult(TransportResult.Reply(answer))
         }

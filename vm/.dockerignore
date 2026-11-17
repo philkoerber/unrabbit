@@ -1,5 +1,7 @@
 *
 !unrabbit_vm/
 !unrabbit_vm/*.py
+!unrabbit_vm/voices.json
 !Dockerfile
 !requirements-setup.txt
+!requirements-speech.txt

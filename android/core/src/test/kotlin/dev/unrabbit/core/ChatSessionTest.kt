@@ -4,6 +4,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ChatSessionTest {
+    @Test fun expiredDraftsStayInHistoryButDoNotJoinOrBlockTheNextRequest() {
+        var now = 1_000L
+        val session = ChatSession(now = { now })
+        val expired = PhotoAttachment(java.util.UUID.randomUUID().toString(), 32, 24, now)
+        session.addPhoto(expired)
+        now += PhotoAttachment.RETENTION_MILLIS - 1
+        assertEquals(listOf(expired), session.draftPhotos)
+        now++
+        assertTrue(session.draftPhotos.isEmpty())
+        val fresh = expired.copy(id = java.util.UUID.randomUUID().toString(), capturedAt = now)
+        session.addPhoto(fresh)
+        val request = session.submit("Das neue Bild")
+        assertEquals(listOf(fresh), request.photos)
+        assertEquals(listOf(expired, fresh), session.messages.flatMap { it.photos })
+        val restored = ChatSession(session.snapshot(), resumePending = true, now = { now })
+        assertEquals(listOf(fresh), restored.activeRequests.single().photos)
+        assertTrue(restored.draftPhotos.isEmpty())
+    }
     @Test fun photoJoinsTheSameStreamWithoutInventingAnAnalysisOrBlockingPendingWork() {
         val session = ChatSession()
         val request = session.submit("Eine Frage")

@@ -13,11 +13,40 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.nio.ByteBuffer
 import java.util.UUID
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhotoStoreTest {
+    @Test fun cleanupDeletesOnlyExpiredImagesIncludingAbandonedCaptures() {
+        val context = RuntimeEnvironment.getApplication()
+        val store = PhotoStore(context)
+        val now = System.currentTimeMillis()
+        val old = PhotoAttachment(UUID.randomUUID().toString(), 32, 24, now - PhotoAttachment.RETENTION_MILLIS)
+        val recent = old.copy(id = UUID.randomUUID().toString(), capturedAt = now - 1000)
+        for (photo in listOf(old, recent)) store.file(photo).apply {
+            parentFile!!.mkdirs(); writeText("private image"); assertTrue(setLastModified(photo.capturedAt))
+        }
+        val abandoned = store.newCaptureFile().apply { writeText("raw capture"); setLastModified(old.capturedAt) }
+        val unrelated = File(context.cacheDir, "other-cache.txt").apply { writeText("keep"); setLastModified(old.capturedAt) }
+        assertEquals(2, store.pruneExpired(now))
+        assertFalse(store.file(old).exists())
+        assertFalse(abandoned.exists())
+        assertTrue(store.file(recent).exists())
+        assertTrue(unrelated.exists())
+        assertEquals(0, store.pruneExpired(now))
+        assertEquals(recent.capturedAt, store.file(recent).lastModified())
+    }
+
+    @Test fun expiredImageIsDeletedOnAccessWithoutWaitingForBackgroundMaintenance() {
+        val store = PhotoStore(RuntimeEnvironment.getApplication())
+        val expired = PhotoAttachment(UUID.randomUUID().toString(), 32, 24,
+            System.currentTimeMillis() - PhotoAttachment.RETENTION_MILLIS)
+        store.file(expired).apply { parentFile!!.mkdirs(); writeText("old photo") }
+        assertNull(store.thumbnail(expired))
+        assertFalse(store.file(expired).exists())
+    }
     @Test fun captureBecomesABoundedPrivateJpegAndRemainsReadableAfterReopening() {
         val context = RuntimeEnvironment.getApplication()
         val store = PhotoStore(context)

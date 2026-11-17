@@ -30,7 +30,7 @@ internal class NetworkSetupView(
         isFillViewport = true; isVerticalScrollBarEnabled = false
         addView(column, LayoutParams(-1, -2))
     }
-    private var status = NetworkSetupStatus("WLAN wird geprüft …", "SIM wird geprüft …", false, false)
+    private var status = NetworkSetupStatus("Checking Wi-Fi …", "Checking SIM …", false, false)
     private var networks = emptyList<NearbyWifi>()
     private var wifiLabel: TextView? = null
     private var simLabel: TextView? = null
@@ -85,40 +85,40 @@ internal class NetworkSetupView(
     private fun changed() { onNavigationChanged(); requestApplyInsets() }
 
     private fun showHome() {
-        page = Page.HOME; reset("WLAN & SIM")
+        page = Page.HOME; reset("Wi-Fi & SIM")
         wifiLabel = label(status.wifi).also { column.addView(it) }
-        button("WLAN auswählen") {
+        button("Choose Wi-Fi") {
             if (controller.managed) { showNetworks(); controller.scan() }
             else onSystemSettings(false)
         }
         simLabel = label(status.sim).also { it.visibility = if (status.hasSim) VISIBLE else GONE; column.addView(it) }
-        simButton = button("SIM / Mobilfunk") { onSystemSettings(true) }.apply { visibility = if (status.hasSim) VISIBLE else GONE }
-        button("Zurück", onClose).apply {
+        simButton = button("SIM / mobile data") { onSystemSettings(true) }.apply { visibility = if (status.hasSim) VISIBLE else GONE }
+        button("Back", onClose).apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(12)
         }
         changed()
     }
 
     private fun showNetworks() {
-        page = Page.LIST; reset("WLAN")
-        message = label(if (networks.isEmpty()) "WLANs werden gesucht …" else "Netzwerk auswählen").also { column.addView(it) }
+        page = Page.LIST; reset("Wi-Fi")
+        message = label(if (networks.isEmpty()) "Searching for Wi-Fi …" else "Choose a network").also { column.addView(it) }
         networks.forEach { network ->
             button(network.name) {
                 if (network.security == WifiSecurity.SYSTEM) onSystemSettings(false) else showPassword(network)
             }
         }
-        button("Erneut suchen") { controller.scan() }
-        button("Weitere Optionen") { onSystemSettings(false) }
-        button("Zurück") { showHome() }
+        button("Scan again") { controller.scan() }
+        button("More options") { onSystemSettings(false) }
+        button("Back") { showHome() }
         changed()
     }
 
     private fun showPassword(network: NearbyWifi) {
         page = Page.PASSWORD; reset(network.name)
-        message = label(if (network.security == WifiSecurity.OPEN) "Offenes WLAN · ohne Passwort" else "WLAN-Passwort").also { column.addView(it) }
+        message = label(if (network.security == WifiSecurity.OPEN) "Open Wi-Fi · no password" else "Wi-Fi password").also { column.addView(it) }
         if (network.security == WifiSecurity.WPA2) {
             password = EditText(context).apply {
-                tag = "wifi-password"; hint = "Passwort"; contentDescription = "WLAN-Passwort"
+                tag = "wifi-password"; hint = "Password"; contentDescription = "Wi-Fi password"
                 textSize = 18f; typeface = resources.getFont(R.font.plex_regular)
                 setTextColor(0xfff2f0e8.toInt()); setSingleLine(true)
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -130,8 +130,8 @@ internal class NetworkSetupView(
                 }
             }.also { column.addView(it, LinearLayout.LayoutParams(-1, dp(52)).apply { leftMargin = dp(16); rightMargin = dp(12) }) }
         }
-        button("Verbinden") { connect(network) }
-        button("Zurück") { showNetworks() }
+        button("Connect") { connect(network) }
+        button("Back") { showNetworks() }
         changed()
     }
 

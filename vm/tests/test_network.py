@@ -12,7 +12,7 @@ class AddressDetectionTests(unittest.TestCase):
              patch.dict(os.environ, {"SSH_CONNECTION": "198.51.100.20 54001 203.0.113.10 2222"}), \
              patch("socket.socket") as create:
             hint = detect_connection()
-        self.assertEqual(("203.0.113.10", 2222, "SSH-Verbindung"), (hint.host, hint.port, hint.source))
+        self.assertEqual(("203.0.113.10", 2222, "SSH connection"), (hint.host, hint.port, hint.source))
         create.assert_not_called()
 
     def test_no_external_service_or_dns_needed_for_route_fallback(self):

@@ -9,28 +9,32 @@
 <p align="center"><a href="SETUP.md">Setup</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="https://github.com/philkoerber/unrabbit/actions/workflows/android.yml">Build</a></p>
 
 <p align="center">
-  <img src="docs/assets/rest.png" width="220" alt="Unrabbit rest screen with a morphing rabbit mark and device status">
+  <img src="docs/assets/rest.png" width="220" alt="Unrabbit black lock screen with a centered clock and three status icons">
   <img src="docs/assets/settings.png" width="220" alt="Unrabbit settings with QR configuration and orange wheel selection">
 </p>
 
-**Early prototype.** The native Android app connects to an Ubuntu VM through QR-based SSH pairing. Android 14, kiosk mode, in-app Wi-Fi, pairing and real VM replies have been checked on an r1; broader transport/photo coverage also runs in an emulator. Speech recognition uses Whisper `base` on your VM, with a live microphone → transcription → chat reply test confirmed on the r1. Reply audio, further hardware checks and stock recovery remain in progress. The screenshots show the actual app, currently in German.
+**Early prototype.** The native Android app connects to an Ubuntu VM through QR-based SSH pairing. Android 14, kiosk mode, in-app Wi-Fi, pairing and real VM replies have been checked on an r1; broader transport/photo coverage also runs in an emulator. Speech recognition uses Whisper `base` on your VM, with a live microphone → transcription → chat reply test confirmed on the r1. Reply audio now uses Piper on the VM; the device owner confirmed that the English/German test voices are easy to understand. Broader hardware checks and stock recovery remain in progress. The interface is in English; speech input and reply audio support English and German. The screenshots show the simplified layout checked in the 480 × 640 emulator; a fresh r1 hardware check is pending.
 
 ## The idea
 
-One continuous chat, a physical wheel and a morphing mark. Hold the side button to speak, then release to send compressed audio to your VM. The VM transcribes it and runs the agent on the recognized text. Reply audio is planned, enabled by default with an on/off setting. The device stays small.
+One continuous chat, a physical wheel and simple menus on a black background. Hold the side button to speak, then release to send compressed audio to your VM. The VM transcribes it and runs the agent on the recognized text. Replies are read aloud by default, with an on/off setting. The device stays small.
 
 The immediate focus is a reliable r1 → Codex on Ubuntu → reply loop. Email, Notion and research through VM-side MCP servers come later; those integrations are not implemented yet.
 
-Speech recognition uses faster-whisper `base` with INT8 CPU inference and a Silero silence check on your VM. Choose **English** or **Deutsch** during setup or in settings; English is the default. Audio travels over the paired SSH connection and is held in memory for recognition, without being saved or sent to a hosted speech provider. Only the recognized text joins the Codex request. See the [verified speech status](docs/STATUS.md).
+Recent photos remain available for follow-up questions, with at most four images per model request. **Photos expire after seven days** on the r1 and VM; asking about them does not extend their lifetime. Text history remains, with a placeholder for expired photos. Automatic cleanup runs in the background and catches up after downtime. See [photo context and retention](docs/STATUS.md#photos-and-seven-day-retention).
 
-Reply audio will offer local synthesis or optional OpenAI with your own API key, independently of speech recognition. This provider setup and playback are not implemented yet.
+Speech recognition uses faster-whisper `base` with INT8 CPU inference and a Silero silence check on your VM. Choose **English** or **German** during setup or in settings; English is the default. Audio travels over the paired SSH connection and is held in memory for recognition, without being saved or sent to a hosted speech provider. Only the recognized text joins the Codex request. See the [verified speech status](docs/STATUS.md).
+
+Reply audio uses VM-local Piper: **Amy medium** for English and **Ramona low** for German. Voices are currently fixed per language; an in-app voice picker is not implemented yet. The app plays short compressed sections while the next one is generated. Pressing the side button interrupts playback immediately; old replies are not replayed after sleep or restart. **Settings → Read aloud** turns it off. Text remains available if audio fails. Optional hosted voices and API-key setup are planned.
 
 The prototype already has:
 
 - Wheel/button navigation, dark mode and a shared battery, clock, Wi-Fi and verified VM status rail across chat and settings.
-- A continuously morphing logo and quiet transitions.
+- Animated wheel scrolling in chat, with up to 3× travel when turning quickly, precise slow ticks, immediate direction changes and touch takeover. Automated checks cover acceleration and these transitions; physical-wheel feel still needs confirmation.
+- A black lock screen with a centered clock, three status icons and quiet transitions; no background logo.
 - Local photo drafts that accompany the next spoken request.
 - Push-to-talk, English/German selection, compressed audio upload, VM transcription and cancellation without submitting a chat request.
+- VM-generated reply audio with default-on playback, interruption and a persistent settings toggle.
 - Scan-to-connect setup: pinned SSH, a device-owned key and no on-device connection fields.
 - Network onboarding: direct Wi-Fi selection on a managed device, optional SIM status and Android dialogs for additional network settings.
 - Persistent local history and a reversible emulator kiosk mode.

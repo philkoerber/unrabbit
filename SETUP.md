@@ -2,7 +2,7 @@
 
 The computer is needed for installation; the r1 talks directly to your VM afterwards. No always-on Mac or PC is required.
 
-**Prototype:** Android, in-app Wi-Fi and VM pairing run on our test r1. Speech uses Whisper `base` on your VM; reply audio, full hardware and stock-restore checks are unfinished. [Verified status](docs/STATUS.md).
+**Prototype:** Android, in-app Wi-Fi and VM pairing run on our test r1. Speech uses Whisper `base` and Piper reply voices on your VM; broader hardware and stock-restore checks are unfinished. [Verified status](docs/STATUS.md).
 
 ## 1. Prepare the r1
 
@@ -57,9 +57,10 @@ python3 -m venv .venv-setup
 .venv-setup/bin/pip install -r scripts/requirements-setup.txt
 .venv-setup/bin/pip install -r vm/requirements-speech.txt
 .venv-setup/bin/python scripts/unrabbit.py speech-setup
+.venv-setup/bin/python scripts/unrabbit.py tts-setup
 ```
 
-Speech setup downloads the pinned multilingual `base` model once. Use the same account and environment when starting the service; it keeps the model loaded for requests. Allow roughly 1 GB of free disk space for the speech packages/model and headroom. The tested CPU VM has two vCPUs and 4 GB RAM. Existing installations need the new source, these speech setup commands and a service restart; pairing is preserved.
+These commands download the pinned multilingual `base` model and the Amy medium (English) and Ramona low (German) voices once, including their model cards. Use the same account and environment when starting the service; it keeps the models loaded. Allow roughly 2 GB of free disk space for dependencies, models and headroom. The tested CPU VM has two vCPUs and 4 GB RAM. Existing installations need the new source, these speech setup commands and a service restart; pairing is preserved.
 
 For real replies, install a compatible Codex CLI and complete its login **under this account**; the tested version is 0.165.0. Otherwise choose the offline Demo agent. [Agent setup and limits](docs/DEVELOPMENT.md#terminal-wizard).
 
@@ -75,16 +76,18 @@ Choose the agent, an address reachable from the r1, the Unrabbit SSH port (defau
 
 ## 4. Connect the r1
 
-1. Open **WLAN & SIM**, connect Wi-Fi, then **Zurück**. A SIM is optional.
-2. Open **Sprache**, choose **English** or **Deutsch** for spoken input. You can change this in settings later.
-3. Tap **VM verbinden** once: the QR scanner opens directly. Scan the wizard's **current** QR.
-4. Wait for **Verbunden** and the checked VM icon. The wizard confirms the enrolled device and removes the QR.
+1. Open **Wi-Fi & SIM**, connect Wi-Fi, then **Back**. A SIM is optional.
+2. Open **Language**, choose **English** or **German** for recognition and the reply voice. You can change this in settings later.
+3. Tap **Connect VM** once: the QR scanner opens directly. Scan the wizard's **current** QR.
+4. Wait for **Connected** and the orange dot on the VM terminal icon. The wizard confirms the enrolled device and removes the QR.
 
 The code expires after ten minutes and can enroll one device. Scan the live terminal/image; old screenshots do not refresh. The device creates its own private key; no SSH private key goes into the QR or repository.
 
-Hold the side button, speak after the listening animation starts, then release. The r1 sends compressed audio over its paired SSH connection; Whisper `base` on the VM returns text for the chat request. Allow microphone access if Android asks, then hold again. Turn the wheel while holding to discard the recording; a short press or Back discards a pending transcript. Silence creates no chat request, and recordings over 30 seconds are discarded. Audio is not saved on either side. Recognition requires the VM connection; after an interrupted upload, speak again. Reply audio is still planned.
+Hold the side button, speak after “Listening…” appears, then release. The r1 sends compressed audio over its paired SSH connection; Whisper `base` on the VM returns text for the chat request. Allow microphone access if Android asks, then hold again. Turn the wheel while holding to discard the recording; a short press or Back discards a pending transcript. Silence creates no chat request, and recordings over 30 seconds are discarded. Audio is not saved on either side. Recognition requires the VM connection; after an interrupted upload, speak again. Replies are read aloud by default. **Settings → Read aloud · On/Off** changes this persistently. A new side-button press stops audio before recording; Back also stops playback. Sleep, leaving chat and changing the VM discard audio; recovered replies remain text-only. No speech API key is needed.
 
 ## 5. Keep the VM running
+
+Photos stay available for follow-up questions for up to seven days. The app and VM automatically delete expired image data; the text history stays. Cleanup catches up when a stopped service/device runs again. For this feature on an existing installation, update the VM source and restart its service **before** installing the updated APK. Existing pairing is retained; no new dependencies or retention setup are needed.
 
 The wizard stays in the foreground; Ctrl+C stops the service. After pairing, restart it with:
 

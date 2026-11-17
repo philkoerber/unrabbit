@@ -8,12 +8,23 @@ import java.io.File
 /** Small on-device probe for the real platform JSON implementation, without a test-framework APK. */
 class SetupQrDeviceProbe : Instrumentation() {
     private var speech = false
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); speech = arguments?.getString("probe") == "speech"; start() }
+    private var replyAudio = false
+    override fun onCreate(arguments: Bundle?) {
+        super.onCreate(arguments)
+        speech = arguments?.getString("probe") == "speech"
+        replyAudio = arguments?.getString("probe") == "reply-audio"
+        start()
+    }
 
     override fun onStart() {
         val report = Bundle()
         var code = Activity.RESULT_OK
         try {
+            if (replyAudio) {
+                ReplyDeviceCheck.run(this, report)
+                finish(code, report)
+                return
+            }
             if (speech) {
                 SpeechDeviceCheck.run(this, report)
                 finish(code, report)

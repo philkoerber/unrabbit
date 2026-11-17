@@ -1,9 +1,10 @@
 package dev.unrabbit.app
 
-import android.animation.ValueAnimator
 import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
@@ -11,10 +12,8 @@ import android.view.View
 import android.view.animation.PathInterpolator
 import kotlin.math.abs
 import kotlin.math.min
-import kotlin.math.PI
-import kotlin.math.sin
 
-/** One set of glyphs moves from the rest view into the chat's existing 24 dp gutter. */
+/** Centered lock-screen clock and three status icons, compacted into the chat's 24 dp gutter. */
 class StatusRailView(context: Context) : View(context) {
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = resources.getFont(R.font.plex_regular)
@@ -31,23 +30,18 @@ class StatusRailView(context: Context) : View(context) {
         private set
     var onProgress: ((Float) -> Unit)? = null
     var status = DeviceStatus()
-        set(value) {
-            field = value
-            describeStatus()
-            invalidate()
-        }
+        set(value) { field = value; describeStatus(); invalidate() }
     var vmState = VmConnectionState.UNPAIRED
         set(value) { field = value; describeStatus(); invalidate() }
 
     private fun describeStatus() {
         val value = status
-        contentDescription = "Akku ${value.batteryPercent?.let { "$it Prozent" } ?: "unbekannt"}${if (value.charging) ", lädt" else ""}. ${value.hour}:${value.minute}. ${value.wifi.description}. ${vmState.description}."
+        contentDescription = "Battery ${value.batteryPercent?.let { "$it percent" } ?: "unknown"}${if (value.charging) ", charging" else ""}. ${value.hour}:${value.minute}. ${value.wifi.description}. ${vmState.description}."
     }
 
     init {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        isClickable = false
-        isFocusable = false
+        describeStatus()
     }
 
     fun setCompact(compact: Boolean, animate: Boolean) {
@@ -60,7 +54,7 @@ class StatusRailView(context: Context) : View(context) {
             return
         }
         animator = ValueAnimator.ofFloat(compactFraction, target).apply {
-            duration = (520 * abs(target - compactFraction)).toLong().coerceAtLeast(1)
+            duration = (360 * abs(target - compactFraction)).toLong().coerceAtLeast(1)
             interpolator = PathInterpolator(.22f, .7f, .18f, 1f)
             addUpdateListener { updateFraction(it.animatedValue as Float) }
             start()
@@ -76,81 +70,73 @@ class StatusRailView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val density = resources.displayMetrics.density
-        // Keep the small rail within the existing margin even with larger system font settings.
         val fontScale = min(resources.configuration.fontScale, 1.15f)
         val p = compactFraction
-        val transitionArc = sin(PI * p).toFloat()
-        fun blend(large: Float, small: Float) = large + (small - large) * p
-        ink.textSize = 48f * fontScale
-        val restClockWidth = ink.measureText("${status.hour}:${status.minute}")
-        // Center the clock itself, not the combined row with its differently sized icons.
-        val restClockX = (width / density - restClockWidth) / 2
-        ink.getTextBounds("00", 0, 2, digitBounds)
-        val rowCenterY = 68f + (digitBounds.top + digitBounds.bottom) / 2f
-        val x = blend(restClockX, 4f)
+        fun blend(rest: Float, compact: Float) = rest + (compact - rest) * p
+        val centerX = width / density / 2f
+        val centerY = height / density / 2f
+        val tone = colors.evaluate(p, 0xfff2f0e8.toInt(), 0xffafb4a8.toInt()) as Int
         canvas.save()
         canvas.scale(density, density)
-        // Anchor the compact rail near the top edge, independently of the chat's top margin.
-        canvas.translate(0f, -24f * p)
-        val tone = colors.evaluate(p, 0xfff2f0e8.toInt(), 0xffafb4a8.toInt()) as Int
-        ink.color = tone
-        ink.style = Paint.Style.FILL
-        ink.textSize = blend(48f, 11f) * fontScale
-        canvas.drawText(status.hour, x, blend(68f, 60f), ink)
-        val minuteOffset = ink.measureText("${status.hour}:")
-        ink.alpha = ((1 - 3 * p).coerceIn(0f, 1f) * 255).toInt()
-        canvas.drawText(":", x + ink.measureText(status.hour), blend(68f, 60f), ink)
-        ink.alpha = 255
-        // Drop the minutes below the hours before tucking them left, keeping glyphs apart.
-        val tuck = ((p - .5f) * 2).coerceIn(0f, 1f)
-        val minuteX = x + minuteOffset * (1 - tuck * tuck * (3 - 2 * tuck))
-        val minuteY = blend(68f, 73f) + transitionArc * 14f
-        canvas.drawText(status.minute, minuteX, minuteY, ink)
 
-        // Battery → clock → Wi-Fi: a row at rest, a single column when compact.
-        val iconAxis = blend(restClockX - 18f - 7.5f, 11.5f)
-        // Give the clock room as the icons move above and below it.
-        val batteryY = blend(rowCenterY - 13f, 30f) - transitionArc * 8f
-        val batteryWidth = blend(15f, 7f)
-        val batteryHeight = blend(26f, 13f)
-        val batteryX = iconAxis - batteryWidth / 2
-        ink.style = Paint.Style.STROKE
-        ink.strokeWidth = blend(1.8f, 1.05f)
-        canvas.drawRoundRect(batteryX, batteryY, batteryX + batteryWidth, batteryY + batteryHeight, 2f, 2f, ink)
-        canvas.drawLine(iconAxis - batteryWidth * .15f, batteryY - 2f,
-            iconAxis + batteryWidth * .15f, batteryY - 2f, ink)
         ink.style = Paint.Style.FILL
+        ink.color = tone
+        ink.textSize = 56f * fontScale
+        val clockX = centerX - ink.measureText("${status.hour}:${status.minute}") / 2f
+        ink.getTextBounds("00", 0, 2, digitBounds)
+        val baseline = centerY - (digitBounds.top + digitBounds.bottom) / 2f
+        ink.textSize = blend(56f, 11f) * fontScale
+        val x = blend(clockX, 4f)
+        canvas.drawText(status.hour, x, blend(baseline, 36f), ink)
+        ink.alpha = ((1 - p) * 255).toInt()
+        canvas.drawText(":", x + ink.measureText(status.hour), blend(baseline, 36f), ink)
+        ink.alpha = 255
+        canvas.drawText(status.minute, x + ink.measureText("${status.hour}:") * (1 - p), blend(baseline, 49f), ink)
+
+        // Equally spaced, centered under the clock. Every icon uses the same 24-unit canvas.
+        val iconY = centerY + 60f * fontScale
+        val restSize = 24f
+        fun icon(restX: Float, compactY: Float, draw: (Canvas) -> Unit) {
+            val size = blend(restSize, 15f)
+            canvas.save()
+            canvas.translate(blend(restX, 11.5f) - size / 2f, blend(iconY, compactY) - size / 2f)
+            canvas.scale(size / 24f, size / 24f)
+            ink.color = tone
+            ink.style = Paint.Style.STROKE
+            ink.strokeWidth = 1.7f
+            draw(canvas)
+            canvas.restore()
+        }
+        icon(centerX - 44f, 13f, ::drawBattery)
+        icon(centerX, 63f, ::drawWifi)
+        icon(centerX + 44f, 86f, ::drawVm)
+        canvas.restore()
+    }
+
+    private fun drawBattery(canvas: Canvas) {
+        canvas.drawRoundRect(6f, 3f, 18f, 23f, 2f, 2f, ink)
+        canvas.drawLine(10f, 1f, 14f, 1f, ink)
         val fill = status.batteryPercent?.div(100f)
-        val fillBottom = batteryY + batteryHeight - 2f
-        val fillTop = fillBottom - (batteryHeight - 4f) * (fill ?: 0f)
-        if (fill != null && fill > 0) canvas.drawRect(batteryX + 2f, fillTop,
-            batteryX + batteryWidth - 2f, fillBottom, ink)
+        val fillTop = 21f - 16f * (fill ?: 0f)
+        if (fill != null && fill > 0) {
+            ink.style = Paint.Style.FILL
+            canvas.drawRect(8f, fillTop, 16f, 21f, ink)
+        }
+        ink.style = Paint.Style.STROKE
         if (status.charging) {
-            shape.reset(); shape.moveTo(iconAxis + batteryWidth * .12f, batteryY + batteryHeight * .22f)
-            shape.lineTo(iconAxis - batteryWidth * .2f, batteryY + batteryHeight * .55f)
-            shape.lineTo(iconAxis + batteryWidth * .15f, batteryY + batteryHeight * .55f)
-            shape.lineTo(iconAxis - batteryWidth * .1f, batteryY + batteryHeight * .8f)
-            ink.style = Paint.Style.STROKE; ink.strokeWidth = blend(1.4f, .85f)
+            shape.reset(); shape.moveTo(13f, 7f); shape.lineTo(10f, 13f)
+            shape.lineTo(14f, 13f); shape.lineTo(11f, 19f)
             canvas.drawPath(shape, ink)
             canvas.save()
-            canvas.clipRect(batteryX + 2f, fillTop, batteryX + batteryWidth - 2f, fillBottom)
-            ink.color = 0xff171915.toInt()
+            canvas.clipRect(8f, fillTop, 16f, 21f)
+            ink.color = Color.BLACK
             canvas.drawPath(shape, ink)
             canvas.restore()
-            ink.color = tone
-        } else if (fill == null) {
-            ink.style = Paint.Style.STROKE
-            canvas.drawLine(batteryX + 2f, batteryY + batteryHeight / 2,
-                batteryX + batteryWidth - 2f, batteryY + batteryHeight / 2, ink)
-        }
+        } else if (fill == null) canvas.drawLine(9f, 13f, 15f, 13f, ink)
+    }
 
-        canvas.save()
-        val wifiSize = blend(30f, 15f)
-        canvas.translate(blend(restClockX + restClockWidth + 18f, 4f),
-            blend(rowCenterY - 15f, 79f) + transitionArc * 32f)
-        canvas.scale(wifiSize / 24, wifiSize / 24)
-        ink.style = Paint.Style.STROKE; ink.strokeWidth = blend(1.7f, 1.9f)
-        // These arcs express connection state, never an invented signal-strength measurement.
+    private fun drawWifi(canvas: Canvas) {
+        // Arcs show connection state, never an invented signal-strength measurement.
         for (i in 0..2) {
             val y = 5f + i * 5f
             val inset = 2f + i * 3.3f
@@ -163,36 +149,33 @@ class StatusRailView(context: Context) : View(context) {
             WifiStatus.LOCAL -> { canvas.drawLine(12f, 18f, 12f, 20f, ink); canvas.drawPoint(12f, 23f, ink) }
             WifiStatus.OFF -> canvas.drawLine(3f, 2f, 22f, 23f, ink)
             WifiStatus.DISCONNECTED -> { canvas.drawLine(9f, 18f, 15f, 24f, ink); canvas.drawLine(15f, 18f, 9f, 24f, ink) }
-            WifiStatus.UNKNOWN -> { ink.style = Paint.Style.FILL; ink.textSize = 12f; canvas.drawText("?", 9f, 25f, ink) }
+            WifiStatus.UNKNOWN -> { ink.style = Paint.Style.FILL; ink.textSize = 12f; canvas.drawText("?", 9f, 24f, ink) }
         }
-        canvas.restore()
+    }
 
-        // Wi-Fi alone never means VM access: show a server with a check, pending dots or slash.
-        canvas.save()
-        val vmSize = blend(22f, 15f)
-        canvas.translate(blend(restClockX + restClockWidth + 56f, 4f),
-            blend(rowCenterY - 11f, 102f) + transitionArc * 38f)
-        canvas.scale(vmSize / 24, vmSize / 24)
-        ink.color = tone
-        ink.style = Paint.Style.STROKE; ink.strokeWidth = 1.7f
-        canvas.drawRoundRect(3f, 2f, 21f, 19f, 2f, 2f, ink)
-        canvas.drawLine(3f, 10f, 21f, 10f, ink)
-        canvas.drawPoint(7f, 6f, ink)
-        canvas.drawPoint(7f, 14f, ink)
+    private fun drawVm(canvas: Canvas) {
+        // A terminal represents the execution host; only an authenticated health check lights its dot.
+        canvas.drawRoundRect(1f, 3f, 23f, 21f, 3f, 3f, ink)
+        shape.reset(); shape.moveTo(6f, 8f); shape.lineTo(10f, 12f); shape.lineTo(6f, 16f)
+        canvas.drawPath(shape, ink)
+        canvas.drawLine(13f, 16f, 17f, 16f, ink)
+        ink.style = Paint.Style.FILL
+        ink.color = Color.BLACK
+        canvas.drawCircle(21f, 21f, 4f, ink)
         when (vmState) {
             VmConnectionState.CONNECTED -> {
                 ink.color = context.getColor(R.color.unrabbit_accent)
-                shape.reset(); shape.moveTo(12f, 21f); shape.lineTo(16f, 24f); shape.lineTo(23f, 16f)
-                canvas.drawPath(shape, ink)
+                canvas.drawCircle(21f, 21f, 2.5f, ink)
             }
             VmConnectionState.CHECKING -> {
-                ink.style = Paint.Style.FILL
-                for (x in listOf(9f, 14f, 19f)) canvas.drawCircle(x, 23f, 1f, ink)
+                ink.color = 0xffafb4a8.toInt(); ink.style = Paint.Style.STROKE
+                canvas.drawCircle(21f, 21f, 2.5f, ink)
             }
-            VmConnectionState.UNPAIRED, VmConnectionState.DISCONNECTED -> canvas.drawLine(1f, 1f, 23f, 23f, ink)
+            VmConnectionState.UNPAIRED, VmConnectionState.DISCONNECTED -> {
+                ink.color = 0xffafb4a8.toInt(); ink.style = Paint.Style.STROKE
+                canvas.drawLine(19f, 23f, 23f, 19f, ink)
+            }
         }
-        canvas.restore()
-        canvas.restore()
     }
 
     override fun onDetachedFromWindow() { animator?.cancel(); super.onDetachedFromWindow() }

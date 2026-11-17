@@ -34,7 +34,7 @@ class SetupQrTest {
         assertSame(invitation, received)
         assertFalse(PairingStore(context).hasPairing())
         assertTrue(screen.isPairing)
-        assertEquals(listOf("Zurück"), screen.navigation.map { it.first.contentDescription })
+        assertEquals(listOf("Back"), screen.navigation.map { it.first.contentDescription })
         assertEquals("PairingQr(redacted)", invitation.toString())
     }
     @Test fun pythonWizardImagesDecodeWithTheCameraReaderAcrossDifferentPatterns() {

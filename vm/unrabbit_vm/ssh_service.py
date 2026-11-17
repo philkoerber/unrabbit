@@ -20,6 +20,7 @@ from .server import Worker
 from .setup_qr import make_qr
 from .store import MAX_BODY_BYTES, Problem, Store, identifier
 from .speech import SpeechService, configured_speech
+from .tts import TtsService, configured_tts
 
 
 def unique_json(raw):
@@ -86,7 +87,7 @@ class Registry:
         return ' '.join(saved.split()[:2]) == ' '.join(key.export_public_key().decode().split()[:2])
 
 
-def dispatch(store, worker, server_id, request, speech=None):
+def dispatch(store, worker, server_id, request, speech=None, tts=None):
     if not isinstance(request, dict) or set(request) != {'serverId', 'method', 'path', 'body'}:
         raise Problem(400, 'Invalid request')
     if request['serverId'] != server_id:
@@ -98,9 +99,11 @@ def dispatch(store, worker, server_id, request, speech=None):
         raise Problem(400, 'Unexpected body')
     if method == 'GET' and path == '/v1/health':
         return {'version': 1, 'agent': worker.agent.name, 'serverId': server_id,
-                'speech': (speech or SpeechService()).status}
+                'speech': (speech or SpeechService()).status, 'tts': (tts or TtsService()).status}
     if method == 'POST' and path == '/v1/speech/transcribe':
         return (speech or SpeechService()).transcribe(body)
+    if method == 'POST' and path == '/v1/speech/synthesize':
+        return (tts or TtsService()).synthesize(body)
     if method == 'POST' and path == '/v1/jobs':
         result = store.submit(body)
         worker.wake.set()
@@ -116,9 +119,10 @@ def dispatch(store, worker, server_id, request, speech=None):
 
 
 class Gateway:
-    def __init__(self, registry, user, store, worker, speech=None):
+    def __init__(self, registry, user, store, worker, speech=None, tts=None):
         self.registry, self.user, self.store, self.worker = registry, user, store, worker
         self.speech = speech or SpeechService()
+        self.tts = tts or TtsService()
         self.connections = set()
         self.requests = asyncio.Semaphore(8)
 
@@ -183,7 +187,7 @@ class Gateway:
                         raise Problem(400, 'Invalid enrollment')
                     result = self.registry.enroll(digest, request['publicKey'])
                 else:
-                    result = await asyncio.to_thread(dispatch, self.store, self.worker, self.registry.server_id, request, self.speech)
+                    result = await asyncio.to_thread(dispatch, self.store, self.worker, self.registry.server_id, request, self.speech, self.tts)
                     if request['path'] == '/v1/health':
                         self.registry.connected.set()
             status = 200
@@ -220,15 +224,15 @@ async def serve(config, terminal=None, config_path=None):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ValueError('Dienst läuft bereits. Vor einer erneuten Einrichtung beenden.') from None
+            raise ValueError('Service is already running. Stop it before running setup again.') from None
         registry = Registry(state)
         connection = config['connection']
         if registry.server_id != connection['serverId'] or registry.host_key.get_fingerprint() != connection['hostKeyFingerprint']:
-            raise ValueError('Server-Identität stimmt nicht. Setup erneut starten.')
+            raise ValueError('Server identity does not match. Run setup again.')
         store = Store(state / 'unrabbit.sqlite3')
         agent = DemoAgent() if config['agent'] == 'demo' else CodexAgent(Path(config['workspace']), config['executable'], private_state=state)
         worker = Worker(store, agent)
-        gateway = Gateway(registry, connection['user'], store, worker, configured_speech())
+        gateway = Gateway(registry, connection['user'], store, worker, configured_speech(), configured_tts())
         listener = None
         started = False
         png_path = Path(config_path).with_suffix('.qr.png') if config_path else None
@@ -236,9 +240,9 @@ async def serve(config, terminal=None, config_path=None):
             listener = await gateway.listen('', connection['port'])
             worker.start(); started = True
             if terminal:
-                terminal.step(3, 'QR scannen')
-                terminal.line('  App: VM verbinden → QR scannen. Der QR gilt zehn Minuten.')
-                terminal.line('  Der QR ist ein Zugangscode. Nicht teilen.')
+                terminal.step(3, 'Scan QR')
+                terminal.line('  App: Connect VM → scan QR. The QR is valid for ten minutes.')
+                terminal.line('  The QR is an access code. Do not share it.')
                 while True:
                     payload = registry.invite(connection)
                     qr = make_qr(payload)
@@ -247,19 +251,19 @@ async def serve(config, terminal=None, config_path=None):
                     write_private(png_path, png.getvalue())
                     # Cancellable terminal input; never block SSH while waiting for resize.
                     await terminal.live_qr(qr, png_path)
-                    terminal.line('  Warte auf das Gerät …')
+                    terminal.line('  Waiting for device …')
                     try:
                         await asyncio.wait_for(registry.connected.wait(), timeout=max(1, registry.expires_at - time.time()))
                         break
                     except asyncio.TimeoutError:
-                        terminal.line('  Neuer Kopplungs-QR:')
+                        terminal.line('  New pairing QR:')
                 registry.invite_hash = None
                 png_path.unlink(missing_ok=True)
                 if terminal.tty:
                     terminal.line('\033[2J\033[H')
-                terminal.line('  Verbunden. Unrabbit läuft · Strg+C beendet.')
+                terminal.line('  Connected. Unrabbit is running · Ctrl+C stops it.')
             else:
-                print(f"Unrabbit SSH: Port {connection['port']} · Strg+C beendet.", flush=True)
+                print(f"Unrabbit SSH: Port {connection['port']} · Ctrl+C stops it.", flush=True)
             await asyncio.Future()
         finally:
             registry.invite_hash = None

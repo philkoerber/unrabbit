@@ -25,7 +25,7 @@ object TransportFactory {
 
 private class InvalidLocalTransport : ChatTransport {
     override fun send(request: ChatRequest, onResult: (TransportResult) -> Unit) {
-        onResult(TransportResult.Failure("Lokale VM-Konfiguration ungültig. Entwicklungs-Setup erneut verbinden."))
+        onResult(TransportResult.Failure("Invalid local VM configuration. Reconnect the development setup."))
     }
     override fun cancel(requestId: String, onAcknowledged: (Boolean) -> Unit) = onAcknowledged(false)
     override fun close() {}

@@ -4,8 +4,9 @@ Single device, single server, one conversation stream. The debug-only HTTP trans
 
 | Request | Result |
 | --- | --- |
-| `GET /v1/health` | Protocol version, server identity, agent and speech readiness |
+| `GET /v1/health` | Protocol version, server identity, agent, recognition readiness and reply-voice readiness |
 | `POST /v1/speech/transcribe` | Ephemeral audio recognition; returns text/language, creates no job |
+| `POST /v1/speech/synthesize` | Ephemeral text-to-audio synthesis; returns compressed audio/language, creates no job |
 | `POST /v1/jobs` | Persist an idempotent request; return its current state |
 | `GET /v1/jobs/{id}` | Fetch the current state/result; unknown ID returns 404 |
 | `POST /v1/jobs/{id}/cancel` with `{}` | Cancel queued/running work, or create a cancellation tombstone |
@@ -24,7 +25,11 @@ Speech uses exactly `{"format":"aac-adts","language":"en","audio":"<base64>"}`; 
 
 Speech requests use the same device authentication and server-identity checks as chat. They never persist audio, create an agent job or accept a path/URL. The app discards cancelled/late results and does not retry audio after a connection loss. Recognition already running on the VM may finish after cancellation; it cannot trigger a chat request. Only a subsequent ordinary text/photo job can invoke the agent. The client allows up to 45 seconds for a speech response.
 
-A photo contains only `id` (UUID), `width`, `height` (1–2048) and `jpeg` (base64 bytes). Maximum four photos, 4 MiB each, and a 24 MiB JSON body. JPEG framing is checked; the service does not decode images or independently verify their declared dimensions. No client-selected paths, executable commands, working directories or credentials are accepted in the body. Text is limited to 16,000 characters; at most 32 unfinished jobs may be queued.
+Synthesis uses exactly `{"text":"Hello.","language":"en"}` with `en`/`de` and 1–240 characters. Blank text, control characters and additional fields are rejected. Success is `{"format":"aac-mp4","language":"en","audio":"<base64>"}`. Audio is mono AAC in MP4, at most 30 seconds and 256 KiB before base64, within the existing 512 KiB response limit. Health includes `tts: {ready, engine, voices}`. Missing setup returns 503, concurrent synthesis 429, malformed input 400, oversized input/output 413; other synthesis failures are sanitized. These requests use the same authentication and never enter the job/photo store. Text is treated as speech content, never a path or command. The app does not automatically retry failed/cancelled sections.
+
+A photo contains `id` (UUID), `width`, `height` (1–2048), `jpeg` (base64 bytes) and optional `capturedAt` (positive Unix milliseconds). Current clients send the capture time; legacy clients without it age from server receipt. The server clamps future capture times to receipt time and rejects already-expired new uploads with 410. Maximum four photos, 4 MiB each, and a 24 MiB JSON body. JPEG framing is checked; the service does not decode images or independently verify their declared dimensions. No client-selected paths, executable commands, working directories or credentials are accepted in the body. Text is limited to 16,000 characters; at most 32 unfinished jobs may be queued.
+
+Photo bytes expire after seven days. Cleanup preserves job IDs, original digests, image references and text/results; an idempotent retry cannot restore deleted bytes or renew expiry. Queued jobs whose required photos expire fail explicitly. The worker includes recent, unexpired photos from completed turns in subsequent model calls, reserving slots for current attachments within a four-image total. Earlier images are mapped to their original text turn; expired or omitted images are marked unavailable in model context. No re-upload is needed for follow-up questions. Update older servers before installing a client that sends `capturedAt`.
 
 Responses contain `id`, `state`, `answer`, `error` and `photos` (metadata plus SHA-256, never the image body). States are `queued`, `running`, `completed`, `failed`, `cancelled`, `interrupted`. A repeated ID with identical normalized content returns its original job; changed content returns 409. A cancellation tombstone always stays cancelled.
 

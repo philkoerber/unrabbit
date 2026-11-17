@@ -11,6 +11,7 @@ from pathlib import Path
 MAX_PHOTOS = 4
 MAX_PHOTO_BYTES = 4 * 1024 * 1024
 MAX_BODY_BYTES = 24 * 1024 * 1024
+PHOTO_RETENTION_SECONDS = 7 * 24 * 60 * 60
 TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
 
 
@@ -42,8 +43,11 @@ def validate(payload):
         raise Problem(400, "At most four photos per request")
     photos, seen = [], set()
     for photo in payload["photos"]:
-        if not isinstance(photo, dict) or set(photo) != {"id", "width", "height", "jpeg"}:
+        if not isinstance(photo, dict) or set(photo) not in ({"id", "width", "height", "jpeg"},
+                                                            {"id", "width", "height", "jpeg", "capturedAt"}):
             raise Problem(400, "Invalid photo fields")
+        if "capturedAt" in photo and (type(photo["capturedAt"]) is not int or not 0 < photo["capturedAt"] < 2**63):
+            raise Problem(400, "Invalid photo capture time")
         identifier(photo["id"])
         if photo["id"] in seen:
             raise Problem(400, "Duplicate photo ID")
@@ -60,6 +64,8 @@ def validate(payload):
             raise Problem(400, "Expected a bounded JPEG")
         photos.append({"id": photo["id"], "width": photo["width"], "height": photo["height"],
                        "sha256": hashlib.sha256(data).hexdigest(), "data": data})
+        if "capturedAt" in photo:
+            photos[-1]["capturedAt"] = photo["capturedAt"]
     normalized = {"text": text.strip(), "photos": [{k: v for k, v in p.items() if k != "data"} for p in photos]}
     digest = hashlib.sha256(json.dumps(normalized, sort_keys=True).encode()).hexdigest()
     return text.strip(), photos, digest
@@ -73,6 +79,7 @@ class Store:
         self.db.executescript("""
             PRAGMA journal_mode=WAL;
             PRAGMA foreign_keys=ON;
+            PRAGMA secure_delete=ON;
             CREATE TABLE IF NOT EXISTS jobs (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
                 digest TEXT, text TEXT NOT NULL, state TEXT NOT NULL,
@@ -84,12 +91,34 @@ class Store:
                 sha256 TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY(job, id)
             );
         """)
+        # Existing photos age from their original job, never from the migration/restart.
+        with self.db:
+            columns = {r[1] for r in self.db.execute("PRAGMA table_info(photos)")}
+            if "expires" not in columns:
+                self.db.execute("ALTER TABLE photos ADD COLUMN expires REAL NOT NULL DEFAULT 0")
+                self.db.execute("UPDATE photos SET expires=(SELECT created FROM jobs WHERE jobs.id=photos.job)+?",
+                                (PHOTO_RETENTION_SECONDS,))
+            self.db.execute("CREATE INDEX IF NOT EXISTS photos_expiry ON photos(expires)")
+        self.prune_photos()
+
+    def prune_photos(self):
+        """Remove bytes, retaining references and job digests for history/idempotent retries."""
+        with self.lock:
+            now = time.time()
+            with self.db:
+                removed = self.db.execute("UPDATE photos SET data=X'' WHERE expires<=? AND length(data)>0", (now,)).rowcount
+                self.db.execute("""UPDATE jobs SET state='failed', error='Photo deleted after seven days. Take a new photo.'
+                    WHERE state='queued' AND id IN (SELECT job FROM photos WHERE expires<=?)""", (now,))
+            if removed:
+                # secure_delete clears SQLite pages; checkpoint also removes old JPEGs from the WAL.
+                self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            return removed
 
     def recover(self):
         # Never replay potentially side-effectful work after an uncertain process exit.
         with self.lock, self.db:
             self.db.execute("UPDATE jobs SET state='interrupted', error=? WHERE state='running'",
-                            ("Dienst neu gestartet. Laufender Auftrag wurde nicht wiederholt.",))
+                            ("Service restarted. The active request was not retried.",))
 
     def submit(self, payload):
         text, photos, digest = validate(payload)
@@ -99,15 +128,21 @@ class Store:
                 if previous["digest"] is not None and previous["digest"] != digest:
                     raise Problem(409, "Request ID already belongs to different content")
             else:
+                now = time.time()
+                for photo in photos:
+                    captured = min(photo.get("capturedAt", now * 1000) / 1000, now)
+                    photo["expires"] = captured + PHOTO_RETENTION_SECONDS
+                    if photo["expires"] <= now:
+                        raise Problem(410, "Photo deleted after seven days. Take a new photo.")
                 pending = self.db.execute("SELECT count(*) FROM jobs WHERE state IN ('queued','running')").fetchone()[0]
                 if pending >= 32:
                     raise Problem(429, "Work queue is full")
                 self.db.execute("INSERT INTO jobs(id,digest,text,state,created) VALUES(?,?,?,'queued',?)",
-                                (payload["id"], digest, text, time.time()))
+                                (payload["id"], digest, text, now))
                 for index, photo in enumerate(photos):
-                    self.db.execute("INSERT INTO photos VALUES(?,?,?,?,?,?,?)",
+                    self.db.execute("INSERT INTO photos(job,position,id,width,height,sha256,data,expires) VALUES(?,?,?,?,?,?,?,?)",
                                     (payload["id"], index, photo["id"], photo["width"], photo["height"],
-                                     photo["sha256"], photo["data"]))
+                                     photo["sha256"], photo["data"], photo["expires"]))
             return self.get(payload["id"])
 
     def get(self, job_id):
@@ -128,6 +163,7 @@ class Store:
             return self.get(job_id)
 
     def claim(self):
+        self.prune_photos() # The worker calls this even when idle; restart also prunes immediately.
         with self.lock, self.db:
             row = self.db.execute("SELECT id,text,seq FROM jobs WHERE state='queued' ORDER BY seq LIMIT 1").fetchone()
             if row is None:
@@ -142,21 +178,31 @@ class Store:
             self.db.execute("UPDATE jobs SET state=?, answer=?, error=? WHERE id=? AND state='running'",
                             (state, answer, error, job_id))
 
-    def context(self, before_seq, budget=24000):
+    def context(self, before_seq, budget=24000, photo_limit=MAX_PHOTOS):
         """Bounded recent completed turns, oldest first. Originals remain in SQLite.
 
         This is a context window, not semantic summarization or project routing.
         """
+        self.prune_photos()
         with self.lock:
-            rows = self.db.execute("SELECT text,answer FROM jobs WHERE seq<? AND state='completed' ORDER BY seq DESC LIMIT 20",
+            rows = self.db.execute("SELECT id,text,answer FROM jobs WHERE seq<? AND state='completed' ORDER BY seq DESC LIMIT 20",
                                    (before_seq,)).fetchall()
-        result = []
-        for row in rows:
-            cost = len(row["text"]) + len(row["answer"])
-            if cost > budget:
-                break
-            result.append({"user": row["text"], "assistant": row["answer"]})
-            budget -= cost
+            result = []
+            remaining = min(MAX_PHOTOS, max(0, photo_limit))
+            for row in rows:
+                cost = len(row["text"]) + len(row["answer"])
+                if cost > budget:
+                    break
+                turn = {"user": row["text"], "assistant": row["answer"]}
+                count = self.db.execute("SELECT count(*) FROM photos WHERE job=?", (row["id"],)).fetchone()[0]
+                photos = [dict(p) for p in self.db.execute("""SELECT id,data,expires FROM photos
+                    WHERE job=? AND expires>? AND length(data)>0 ORDER BY position LIMIT ?""",
+                    (row["id"], time.time(), remaining))]
+                if count:
+                    turn.update(photos=photos, unavailable_photos=count - len(photos))
+                remaining -= len(photos)
+                result.append(turn)
+                budget -= cost
         return result[::-1]
 
     def close(self):

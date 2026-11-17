@@ -90,16 +90,17 @@ internal open class VmTransport(private val api: VmApi,
             val current = api("GET", path)
             val job = if (current.first == 404) api("POST", "/v1/jobs", payload(entry.request)) else current
             if (job.first == 429 || job.first >= 500) throw IOException("Server busy")
-            if (job.first !in 200..299) throw Rejected("VM-Anfrage abgelehnt (${job.first}). Verbindung prüfen.")
+            if (job.first == 410) throw Rejected("Photo deleted after seven days. Take a new photo.")
+            if (job.first !in 200..299) throw Rejected("VM request rejected (${job.first}). Check the connection.")
             require(job.second.getString("id") == entry.request.id)
             if (entry.offline) { entry.offline = false; deliver(entry, TransportResult.Waiting(null)) }
             entry.delay = 2
             when (job.second.getString("state")) {
                 "completed" -> deliver(entry, TransportResult.Reply(job.second.getString("answer")), terminal = true)
-                "failed", "interrupted" -> deliver(entry, TransportResult.Failure(job.second.optString("error", "Auftrag fehlgeschlagen.")), terminal = true)
-                "cancelled" -> deliver(entry, TransportResult.Failure("Angehalten."), terminal = true)
+                "failed", "interrupted" -> deliver(entry, TransportResult.Failure(job.second.optString("error", "Request failed.")), terminal = true)
+                "cancelled" -> deliver(entry, TransportResult.Failure("Stopped."), terminal = true)
                 "queued", "running" -> schedule(entry, 2)
-                else -> throw Rejected("Unbekannter VM-Auftragsstatus.")
+                else -> throw Rejected("Unknown VM request status.")
             }
         } catch (error: Rejected) {
             deliver(entry, TransportResult.Failure(error.message.orEmpty()), terminal = true)
@@ -112,12 +113,12 @@ internal open class VmTransport(private val api: VmApi,
         } catch (_: IOException) {
             if (!entry.offline) {
                 entry.offline = true
-                deliver(entry, TransportResult.Waiting("Verbindung unterbrochen. Anfrage bleibt vorgemerkt."))
+                deliver(entry, TransportResult.Waiting("Connection interrupted. Request remains queued."))
             }
             entry.delay = (entry.delay * 2).coerceAtMost(30)
             schedule(entry, entry.delay)
         } catch (_: Exception) {
-            deliver(entry, TransportResult.Failure("Ungültige VM-Antwort oder Bilddatei."), terminal = true)
+            deliver(entry, TransportResult.Failure("Invalid VM response or image file."), terminal = true)
         }
     }
 
@@ -130,13 +131,16 @@ internal open class VmTransport(private val api: VmApi,
     }
 
     private fun payload(request: ChatRequest): JSONObject {
-        if (request.photos.size > 4) throw Rejected("Höchstens vier Bilder pro Anfrage.")
+        if (request.photos.size > 4) throw Rejected("Up to four photos per request.")
         val images = JSONArray()
         request.photos.forEach { photo ->
+            if (photo.isExpired(System.currentTimeMillis())) throw Rejected("Photo deleted after seven days. Take a new photo.")
             val file = photoFile(photo)
-            if (!file.isFile || file.length() !in 4..(4 * 1024 * 1024)) throw Rejected("Bilddatei fehlt oder ist zu groß.")
-            images.put(JSONObject().put("id", photo.id).put("width", photo.width).put("height", photo.height)
-                .put("jpeg", Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)))
+            if (!file.isFile || file.length() !in 4..(4 * 1024 * 1024)) throw Rejected("Image file missing or too large.")
+            val encoded = JSONObject().put("id", photo.id).put("width", photo.width).put("height", photo.height)
+                .put("jpeg", Base64.encodeToString(file.readBytes(), Base64.NO_WRAP))
+            if (photo.capturedAt > 0) encoded.put("capturedAt", photo.capturedAt)
+            images.put(encoded)
         }
         return JSONObject().put("id", request.id).put("text", request.text).put("photos", images)
     }

@@ -6,17 +6,18 @@ FROM ubuntu:24.04 AS base
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --shell /bin/sh unrabbit
-RUN mkdir /data /opt/unrabbit-model && chown 10001:10001 /data /opt/unrabbit-model
+RUN mkdir /data /opt/unrabbit-model /opt/unrabbit-voices && chown 10001:10001 /data /opt/unrabbit-model /opt/unrabbit-voices
 COPY requirements-speech.txt /tmp/requirements-speech.txt
 RUN python3 -m venv /opt/unrabbit-runtime \
     && /opt/unrabbit-runtime/bin/pip install --no-cache-dir -r /tmp/requirements-speech.txt \
     && rm /tmp/requirements-speech.txt
-ENV PATH="/opt/unrabbit-runtime/bin:${PATH}" UNRABBIT_SPEECH_MODEL=/opt/unrabbit-model HF_HUB_DISABLE_XET=1
+ENV PATH="/opt/unrabbit-runtime/bin:${PATH}" UNRABBIT_SPEECH_MODEL=/opt/unrabbit-model UNRABBIT_TTS_MODELS=/opt/unrabbit-voices HF_HUB_DISABLE_XET=1
 WORKDIR /app
 COPY unrabbit_vm ./unrabbit_vm
 USER 10001:10001
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN python3 -m unrabbit_vm speech-setup
+RUN python3 -m unrabbit_vm tts-setup
 ENTRYPOINT ["python3", "-m", "unrabbit_vm"]
 CMD ["--state", "/data", "--listen", "0.0.0.0"]
 

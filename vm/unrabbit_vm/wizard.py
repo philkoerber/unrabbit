@@ -39,13 +39,13 @@ def check_codex(executable):
                                      capture_output=True, text=True, timeout=10)
         required = ("--ignore-user-config", "--ephemeral", "--strict-config", "--output-last-message", "--image")
         if help_result.returncode or not all(flag in help_result.stdout for flag in required):
-            return "Diese Codex-Version passt noch nicht zum Adapter. CLI aktualisieren."
+            return "This Codex version is incompatible with the adapter. Update the CLI."
         status = subprocess.run([executable, "login", "status"], stdin=subprocess.DEVNULL,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
         if status.returncode:
-            return "Codex ist nicht angemeldet. In einem zweiten Terminal als dieses Konto: codex login"
+            return "Codex is not signed in. In another terminal, as this user: codex login"
     except (OSError, subprocess.TimeoutExpired):
-        return "Codex ließ sich nicht prüfen. Installation und PATH prüfen."
+        return "Could not check Codex. Check the installation and PATH."
     return None
 
 
@@ -75,7 +75,7 @@ class Terminal:
                 raise CancelSetup()
             value = answer.strip() or str(default)
             if any(ord(c) < 32 or ord(c) == 127 for c in value):
-                self.line("  Bitte ohne Steuerzeichen eingeben.")
+                self.line("  Enter a value without control characters.")
                 continue
             try:
                 return validate(value) if validate else value
@@ -84,7 +84,7 @@ class Terminal:
 
     def qr(self, qr, png, interactive=True):
         if not self.tty or "UTF" not in (self.output.encoding or "").upper().replace("-", ""):
-            self.line(f"  QR als Bild öffnen: {png}")
+            self.line(f"  Open QR image: {png}")
             return
         width = len(qr.get_matrix())
         height = (width + 1) // 2 + 6
@@ -92,11 +92,11 @@ class Terminal:
             size = shutil.get_terminal_size()
             if size.columns >= width and size.lines >= height:
                 break
-            self.line(f"  Für den QR braucht das Terminal {width} Spalten × {height} Zeilen.")
+            self.line(f"  The QR needs a terminal with {width} columns × {height} rows.")
             if not interactive:
                 return False
-            if self.ask("Vergrößern + Enter, oder p für PNG", validate=one_of("", "p")) == "p":
-                self.line(f"  QR als Bild öffnen: {png}")
+            if self.ask("Resize + Enter, or p for PNG", validate=one_of("", "p")) == "p":
+                self.line(f"  Open QR image: {png}")
                 return
         for line in terminal_lines(qr):
             self.line(line)
@@ -105,7 +105,7 @@ class Terminal:
     async def live_qr(self, qr, png):
         import asyncio
         while self.qr(qr, png, interactive=False) is False:
-            self.line("  Vergrößern + Enter · p öffnet PNG · q beendet")
+            self.line("  Resize + Enter · p shows PNG path · q quits")
             loop = asyncio.get_running_loop()
             answer = loop.create_future()
             descriptor = self.source.fileno()
@@ -120,14 +120,14 @@ class Terminal:
             if not text or text.strip().lower() == "q":
                 raise CancelSetup()
             if text.strip().lower() == "p":
-                self.line(f"  QR als Bild öffnen: {png}")
+                self.line(f"  Open QR image: {png}")
                 return
 
 
 def one_of(*choices):
     def validate(value):
         if value not in choices:
-            raise ValueError("Bitte eine der angezeigten Optionen wählen.")
+            raise ValueError("Choose one of the listed options.")
         return value
     return validate
 
@@ -136,16 +136,16 @@ def port_number(value):
     try:
         number = int(value)
     except ValueError:
-        raise ValueError("Port muss eine Zahl sein.") from None
+        raise ValueError("Port must be a number.") from None
     if not 1 <= number <= 65535:
-        raise ValueError("Port muss zwischen 1 und 65535 liegen.")
+        raise ValueError("Port must be between 1 and 65535.")
     return number
 
 
 def workspace_path(value):
     path = Path(value).expanduser()
     if not path.is_absolute() or (path.exists() and not path.is_dir()):
-        raise ValueError("Einen absoluten Ordnerpfad angeben (~/workspace geht auch).")
+        raise ValueError("Enter an absolute directory path (~/workspace also works).")
     return str(path.resolve())
 
 
@@ -155,52 +155,52 @@ def run_wizard(config_path, terminal, user, service_port=None):
         import qrcode  # noqa: F401
         from PIL import Image  # noqa: F401
     except ImportError:
-        raise ValueError("QR-Abhängigkeit fehlt. Im Setup-venv: pip install -r scripts/requirements-setup.txt") from None
+        raise ValueError("QR dependency missing. In the setup venv: pip install -r scripts/requirements-setup.txt") from None
     connection_payload("vm.example.net", 22, user)
     terminal.line("\nunrabbit / setup")
-    terminal.line("Enter übernimmt den Vorschlag · q beendet")
+    terminal.line("Enter accepts the default · q quits")
     terminal.step(1, "Agent")
     detected = discover_agents()
     options = [item for item in detected if item.supported]
-    options.append(AgentOption("demo", "Demo · ohne Modell", None, True))
+    options.append(AgentOption("demo", "Demo · no model", None, True))
     for index, item in enumerate(options, 1):
-        terminal.line(f"  {index}  {item.label}" + (" · installiert" if item.executable else ""))
+        terminal.line(f"  {index}  {item.label}" + (" · installed" if item.executable else ""))
     unsupported = [item.label for item in detected if not item.supported]
     if unsupported:
-        terminal.line("  Ebenfalls gefunden, noch ohne Adapter: " + ", ".join(unsupported))
+        terminal.line("  Also found, no adapter yet: " + ", ".join(unsupported))
     if existing and existing["agent"] not in [item.name for item in options]:
-        terminal.line("  Der gespeicherte Agent wurde im PATH nicht gefunden. Bitte neu wählen.")
+        terminal.line("  The saved agent was not found in PATH. Choose again.")
     default = next((str(index) for index, item in enumerate(options, 1)
                     if existing and item.name == existing["agent"]), "1")
     while True:
-        chosen = terminal.ask("Auswahl", default, one_of(*(str(i) for i in range(1, len(options) + 1))))
+        chosen = terminal.ask("Choice", default, one_of(*(str(i) for i in range(1, len(options) + 1))))
         agent = options[int(chosen) - 1]
         problem = check_codex(agent.executable) if agent.name == "codex" else None
         if not problem:
             break
         terminal.line("  " + problem)
     if agent.name == "codex":
-        terminal.line("  Aktuell: lesender CLI-Adapter. Eigene MCP-Konfiguration wird noch nicht geladen.")
+        terminal.line("  Current: read-only CLI adapter. Custom MCP configuration is not loaded yet.")
 
     terminal.step(2, "VM")
-    terminal.line(f"  Konto: {user} · eigener Unrabbit-SSH-Zugang")
+    terminal.line(f"  Account: {user} · dedicated Unrabbit SSH access")
     old = existing["connection"] if existing else {}
     hint = detect_connection() if not old else None
     if hint:
-        terminal.line(f"  Adresse erkannt: {hint.source}")
-    host = terminal.ask("VM-Adresse", old.get("host", hint.host if hint else ""),
+        terminal.line(f"  Address detected: {hint.source}")
+    host = terminal.ask("VM address", old.get("host", hint.host if hint else ""),
                         lambda text: connection_payload(text, 22, user)["host"])
     # This endpoint belongs to Unrabbit, not the administrator's system sshd.
     default_port = old.get("port", 2222) if existing and existing["version"] == 2 else 2222
     def unprivileged_port(text):
         port = port_number(text)
         if port < 1024:
-            raise ValueError("Unrabbit verwendet einen eigenen Port ab 1024 (Standard: 2222).")
+            raise ValueError("Unrabbit uses a dedicated port of 1024 or higher (default: 2222).")
         return port
-    ssh_port = terminal.ask("Unrabbit-SSH-Port", default_port, unprivileged_port)
-    workspace = terminal.ask("Arbeitsordner", existing["workspace"] if existing else "~/workspace", workspace_path)
+    ssh_port = terminal.ask("Unrabbit SSH port", default_port, unprivileged_port)
+    workspace = terminal.ask("Workspace", existing["workspace"] if existing else "~/workspace", workspace_path)
     terminal.line(f"  {agent.label} · {user}@{host}:{ssh_port}")
-    terminal.ask("Enter zum Starten und Koppeln", validate=one_of(""))
+    terminal.ask("Enter to start and pair", validate=one_of(""))
     from .ssh_service import Registry
     state = existing["state"] if existing else str(default_state_path().resolve())
     registry = Registry(state)
@@ -213,16 +213,16 @@ def run_wizard(config_path, terminal, user, service_port=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Unrabbit: minimaler Linux-Setup-Wizard")
+    parser = argparse.ArgumentParser(description="Unrabbit: minimal Linux setup wizard")
     parser.add_argument("--config", type=Path, default=default_config_path())
-    parser.add_argument("--port", type=int, help="Interner Loopback-Port (Standard: 8787), nicht der SSH-Port")
+    parser.add_argument("--port", type=int, help="Internal loopback port (default: 8787), separate from the SSH port")
     args = parser.parse_args(argv)
     if sys.platform != "linux":
-        parser.error("Auf der Linux-VM als Dienstkonto ausführen. Lokal: in einem Ubuntu-Container testen.")
+        parser.error("Run on the Linux VM as the service account. For local tests, use an Ubuntu container.")
     if os.geteuid() == 0:
-        parser.error("Als eigenes Konto ohne root/sudo ausführen.")
+        parser.error("Run as a dedicated account without root/sudo.")
     if args.port is not None and not 1024 <= args.port <= 65535:
-        parser.error("Interner Port muss zwischen 1024 und 65535 liegen.")
+        parser.error("Internal port must be between 1024 and 65535.")
     config_path = args.config.expanduser().absolute()
     terminal = Terminal()
     try:
@@ -230,7 +230,7 @@ def main(argv=None):
         from .ssh_service import run
         return run(config, terminal, config_path)
     except (CancelSetup, KeyboardInterrupt):
-        terminal.line("\n  Beendet. Ein bereits gespeichertes Setup bleibt erhalten.")
+        terminal.line("\n  Stopped. Previously saved setup is preserved.")
         return 0
     except (ValueError, OSError) as error:
         parser.exit(1, f"Setup: {error}\n")

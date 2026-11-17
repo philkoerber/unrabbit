@@ -26,7 +26,7 @@ class MainActivity : Activity() {
     private enum class Page { WELCOME, CHAT, SETTINGS, PAIRING, NETWORK, CAMERA, LANGUAGE }
     private val inkColor = 0xfff2f0e8.toInt()
     private val mutedColor = 0xffafb4a8.toInt()
-    private val surfaceColor = 0xff171915.toInt()
+    private val surfaceColor = android.graphics.Color.BLACK
     private val handler = Handler(Looper.getMainLooper())
     private val gesture = ButtonGesture()
     private lateinit var storage: LocalStorage
@@ -34,6 +34,9 @@ class MainActivity : Activity() {
     private lateinit var transport: ChatTransport
     private lateinit var photos: PhotoStore
     private lateinit var speech: SpeechInput
+    private lateinit var replySpeech: ReplySpeech
+    private var replyToSpeak: Pair<String, SpeechLanguage>? = null
+    private var reading = false
     private lateinit var speechPreferences: SpeechPreferences
     private var languageReturn = Page.WELCOME
     private var transcribing = false
@@ -56,10 +59,10 @@ class MainActivity : Activity() {
     private var resumed = false
     private val surface get() = requireNotNull(content)
     private lateinit var regular: Typeface
-    private var logo: LogoView? = null
+    private lateinit var touchSurface: View
     private lateinit var statusRail: StatusRailView
     private lateinit var deviceStatus: DeviceStatusMonitor
-    private var feed: ScrollView? = null
+    private var feed: DeviceScrollView? = null
     private var chatNotice: View? = null
     private var position: Int? = null
     private var notice: String? = null
@@ -82,20 +85,23 @@ class MainActivity : Activity() {
         photos = PhotoStore(this)
         speechPreferences = SpeechPreferences(this)
         speech = (application as UnrabbitApplication).createSpeechInput()
+        replySpeech = (application as UnrabbitApplication).createReplySpeech()
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC
         transport = TransportFactory.create(this, photos)
         val snapshot = storage.load()
         val recover = transport.identity != null && snapshot?.backendId == transport.identity
         session = ChatSession(snapshot, resumePending = recover)
-        if (session.interruptedOnRestore && !session.pending()) notice = "Frühere Anfrage unterbrochen. Sie wird nicht automatisch wiederholt."
-        if (storage.readFailed) notice = "Gespeicherte Demo konnte nicht geladen werden."
+        if (session.interruptedOnRestore && !session.pending()) notice = "Previous request interrupted. It will not be retried automatically."
+        if (storage.readFailed) notice = "Saved chat could not be loaded."
         save() // Also commits the one-time legacy migration; its source file stays intact.
+        PhotoCleanupService.schedule(this) // Persist legacy photo ages before background deletion can start.
         root = FrameLayout(this).apply {
             setBackgroundColor(surfaceColor)
             isFocusableInTouchMode = true
             defaultFocusHighlightEnabled = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-        logo = LogoView(this).apply {
+        touchSurface = View(this).apply {
             tag = "unrabbit-background"
             setOnClickListener { shortClick() }
             setOnTouchListener { _, event ->
@@ -108,13 +114,10 @@ class MainActivity : Activity() {
                 }
             }
         }
-        root.addView(logo, FrameLayout.LayoutParams(-1, -1))
+        root.addView(touchSurface, FrameLayout.LayoutParams(-1, -1))
         statusRail = StatusRailView(this).apply {
             tag = "unrabbit-status"
-            onProgress = { progress ->
-                logo?.restFraction = 1 - progress
-                updateChatVisibility(animate = false)
-            }
+            onProgress = { updateChatVisibility(animate = false) }
         }
         root.addView(statusRail, FrameLayout.LayoutParams(-1, -1))
         observeVmConnection()
@@ -134,19 +137,21 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed = true
+        photoIo.execute { photos.pruneExpired() }
         transport.resume()
         DeviceMode.enterIfManaged(this)
         DeviceMode.hideSystemBars(this)
         pairingView?.resumeCamera()
         cameraView?.resumeCamera()
-        updateLogo(animateStatus = false)
+        updateStatus(animateStatus = false)
     }
 
     override fun onPause() {
         resumed = false
+        feed?.stopWheelScroll()
+        cancelReply()
         transport.pause()
-        if (pairingView?.isPairing == true) { cancelPairing(); pairingView?.showError("Unterbrochen. Bitte erneut scannen.") }
-        logo?.setPlaybackActive(false)
+        if (pairingView?.isPairing == true) { cancelPairing(); pairingView?.showError("Interrupted. Scan again to retry.") }
         pairingView?.pauseCamera()
         cameraView?.pauseCamera()
         abortPress()
@@ -156,13 +161,13 @@ class MainActivity : Activity() {
             resting = true
             if (menu) { menu = false; render(animate = false) }
         }
-        updateLogo(animateStatus = false)
+        updateStatus(animateStatus = false)
         super.onPause()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus) { abortPress(); cancelSpeech() }
+        if (!hasFocus) { abortPress(); cancelSpeech(); cancelReply() }
         else DeviceMode.hideSystemBars(this)
     }
 
@@ -171,6 +176,7 @@ class MainActivity : Activity() {
         pairingView?.closeCamera()
         cancelPairing()
         speech.close()
+        replySpeech.close()
         pairingIo.shutdownNow()
         photoIo.shutdown()
         handler.removeCallbacksAndMessages(null)
@@ -200,6 +206,7 @@ class MainActivity : Activity() {
     private fun motionEnabled() = ValueAnimator.areAnimatorsEnabled()
 
     private fun render(follow: Boolean = false, animate: Boolean = true) {
+        if (page != Page.CHAT || menu) cancelReply()
         rememberPosition()
         cameraView?.closeCamera(); cameraView = null
         val selectedIcon = if (renderedMenu && menu) (navigation.getOrNull(selection)?.first as? MenuIconView)?.icon else null
@@ -230,7 +237,7 @@ class MainActivity : Activity() {
         if (menu) renderMenu()
         if (selectedIcon != null) navigation.indexOfFirst { (it.first as? MenuIconView)?.icon == selectedIcon }
             .takeIf { it >= 0 }?.let { selection = it }
-        updateLogo()
+        updateStatus()
         highlightSelection()
         root.requestFocus()
         renderedPage = page
@@ -258,20 +265,20 @@ class MainActivity : Activity() {
             setPadding(dp(24), dp(24), dp(24), dp(24))
         }
         column.addView(text("Unrabbit", 28f))
-        column.addView(text("WLAN oder SIM verbinden.\nDanach deine VM koppeln.", 16f, true).apply {
+        column.addView(text("Connect to Wi-Fi or mobile data.\nThen pair your VM.", 16f, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(18), 0, dp(24))
         })
-        column.addView(navButton("WLAN & SIM") { openNetwork() })
-        column.addView(navButton("Sprache · ${speechPreferences.language.label}") { openLanguage() })
-        column.addView(navButton("VM verbinden") { openPairing() })
-        if (TransportFactory.supportsDemo) column.addView(navButton("Demo öffnen") {
+        column.addView(navButton("Wi-Fi & SIM") { openNetwork() })
+        column.addView(navButton("Language · ${speechPreferences.language.label}") { openLanguage() })
+        column.addView(navButton("Connect VM") { openPairing() })
+        if (TransportFactory.supportsDemo) column.addView(navButton("Open demo") {
             storage.preferences.edit().putBoolean("demoAcknowledged", true).apply()
             page = Page.CHAT
             selection = 0
             render()
         })
-        column.addView(text("Seitentaste halten zum Sprechen.", 12f, true).apply { setPadding(dp(12), dp(12), 0, 0) })
+        column.addView(text("Hold the side button to speak.", 12f, true).apply { setPadding(dp(12), dp(12), 0, 0) })
         surface.addView(column, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
     }
 
@@ -295,7 +302,7 @@ class MainActivity : Activity() {
             if (message.text.isNotEmpty()) messages.addView(text(message.text, if (message.role == Role.USER) 20f else 22f, message.role == Role.USER).apply {
                 gravity = if (message.role == Role.USER) Gravity.END else Gravity.START
                 setPadding(if (message.role == Role.USER) dp(28) else 0, 0, 0, dp(24))
-                contentDescription = "${if (message.role == Role.USER) "Du" else "Unrabbit"}: ${message.text}"
+                contentDescription = "${if (message.role == Role.USER) "You" else "Unrabbit"}: ${message.text}"
                 isFocusable = false
                 isClickable = false
             }, LinearLayout.LayoutParams(-1, -2))
@@ -308,7 +315,13 @@ class MainActivity : Activity() {
         feed = scroll
         val savedPosition = position
         scroll.post { scroll.scrollTo(0, if (follow || savedPosition == null) messages.height - scroll.height else savedPosition) }
-        val notice = notice
+        val notice = notice ?: when {
+            recording -> "Listening…"
+            transcribing -> "Transcribing…"
+            session.pending() -> "Thinking…"
+            empty -> "Hold the side button to speak."
+            else -> null
+        }
         if (notice != null) {
             val status = text(notice, 14f, true).apply {
                 setBackgroundColor(surfaceColor)
@@ -326,7 +339,7 @@ class MainActivity : Activity() {
         feed?.visibility = View.INVISIBLE
         chatNotice?.visibility = View.INVISIBLE
         surface.addView(View(this).apply {
-            contentDescription = "Menü schließen"
+            contentDescription = "Close menu"
             setOnClickListener { menu = false; render() }
         }, FrameLayout.LayoutParams(-1, -1))
         val column = LinearLayout(this).apply {
@@ -372,6 +385,7 @@ class MainActivity : Activity() {
     }
 
     private fun shortClick() {
+        if (reading) { cancelReply(); return }
         if (transcribing) { cancelSpeech(showNotice = true); return }
         if (pairingView?.isScanning == true) return
         if (page == Page.CAMERA) {
@@ -381,7 +395,7 @@ class MainActivity : Activity() {
         }
         if (page == Page.CHAT && resting) {
             resting = false
-            updateLogo()
+            updateStatus()
             return
         }
         if (navigation.isNotEmpty()) navigation[selection.coerceIn(navigation.indices)].second()
@@ -404,7 +418,12 @@ class MainActivity : Activity() {
         settingsView = SettingsView(this, paired != null,
             onClose = { closeSettings() }, onConnect = { openPairing() },
             onNetwork = { openNetwork() }, onLanguage = { openLanguage() },
-            language = speechPreferences.language.label).also { panel ->
+            language = speechPreferences.language.label,
+            readAloud = speechPreferences.readAloud,
+            onReadAloud = {
+                speechPreferences.readAloud = !speechPreferences.readAloud
+                cancelReply(); render(animate = false)
+            }).also { panel ->
             panel.onSelection = { selection = it; highlightSelection() }
             navigation += panel.navigation
             panel.setConnectionState(statusRail.vmState)
@@ -439,7 +458,7 @@ class MainActivity : Activity() {
             panel.onSelection = { selection = it; highlightSelection() }
             panel.onNavigationChanged = {
                 navigation.clear(); navigation += panel.navigation
-                selection = 0; highlightSelection(); updateLogo(); DeviceMode.hideSystemBars(this)
+                selection = 0; highlightSelection(); updateStatus(); DeviceMode.hideSystemBars(this)
                 if (panel.isScanning) abortPress()
             }
             navigation += panel.navigation
@@ -462,7 +481,7 @@ class MainActivity : Activity() {
             onClose = { closeNetwork() },
             onSystemSettings = { mobile ->
                 if (!DeviceMode.openNetworkSettings(this, mobile))
-                    Toast.makeText(this, "Verbindungsdialog nicht verfügbar.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Network settings unavailable.", Toast.LENGTH_SHORT).show()
             }).also { panel ->
             panel.onSelection = { selection = it; highlightSelection() }
             panel.onNavigationChanged = {
@@ -483,7 +502,7 @@ class MainActivity : Activity() {
 
     private fun pairVm(invitation: PairingQr) {
         val panel = pairingView ?: return
-        if (session.pending()) { panel.showError("Laufende Anfrage zuerst beenden."); return }
+        if (session.pending()) { panel.showError("Finish the current request first."); return }
         cancelPairing()
         val generation = pairingGeneration
         val store = PairingStore(this)
@@ -495,21 +514,21 @@ class MainActivity : Activity() {
             val error = try { api.pair(invitation); null }
             catch (failure: HostIdentityFailure) { failure.message }
             catch (failure: PairingFailure) { failure.message }
-            catch (_: Exception) { "Verbindung fehlgeschlagen. VM-Wizard und Netzwerk prüfen, dann erneut scannen." }
+            catch (_: Exception) { "Connection failed. Check the VM wizard and network, then scan again." }
             finally { api.close() }
             handler.post {
                 if (isDestroyed || generation != pairingGeneration || pairingView !== panel) return@post
                 pairingApi = null
                 if (error != null) { panel.showError(error); return@post }
                 try { store.save(vm) }
-                catch (_: Exception) { panel.showError("Kopplung konnte nicht gespeichert werden. Erneut scannen."); return@post }
+                catch (_: Exception) { panel.showError("Pairing could not be saved. Scan again."); return@post }
                 transport.close()
                 transport = TransportFactory.create(this, photos)
                 observeVmConnection()
                 if (resumed) transport.resume()
                 storage.preferences.edit().putBoolean("demoAcknowledged", true).apply()
                 save()
-                notice = "Verbunden"; noticeRevision++
+                notice = "Connected"; noticeRevision++
                 page = Page.CHAT; menu = false; resting = false; selection = 0
                 render()
             }
@@ -524,7 +543,7 @@ class MainActivity : Activity() {
     private fun openCamera() {
         if (page != Page.CHAT || menu || recording || transcribing) return
         if (session.draftPhotos.size >= 4) {
-            resting = false; notice = "Bilder zuerst mit einer Nachricht senden."; noticeRevision++; render(); return
+            resting = false; notice = "Send your photos with a message first."; noticeRevision++; render(); return
         }
         returnToRestAfterCamera = resting
         page = Page.CAMERA; selection = 0
@@ -557,15 +576,15 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 71 && page == Page.PAIRING) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) pairingView?.openScanner()
-            else pairingView?.showError("Kamerazugriff fehlt. Bitte zum Scannen freigeben.")
+            else pairingView?.showError("Allow camera access to scan.")
         }
         if (requestCode == 72 && page == Page.CAMERA) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && resumed) cameraView?.resumeCamera()
-            else cameraView?.showError("Kamerazugriff fehlt.")
+            else cameraView?.showError("Camera access required.")
         }
         if (requestCode == 73 && page == Page.CHAT) {
             notice = if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
-                "Zum Sprechen die Seitentaste erneut halten." else "Mikrofonzugriff fehlt. Bitte zum Sprechen freigeben."
+                "Hold the side button again to speak." else "Microphone access required. Allow it to speak."
             noticeRevision++; resting = false; render()
         }
         DeviceMode.hideSystemBars(this)
@@ -579,10 +598,12 @@ class MainActivity : Activity() {
 
     private fun submit(text: String) {
         if (session.draftPhotos.size > 4 && transport.identity != null) {
-            notice = "Höchstens vier Bilder pro Anfrage im lokalen VM-Test."; noticeRevision++; render(); return
+            notice = "Up to four photos per request."; noticeRevision++; render(); return
         }
         notice = null; noticeRevision++
         val request = session.submit(text)
+        cancelReply()
+        if (speechPreferences.readAloud && resumed) replyToSpeak = request.id to speechPreferences.language
         render(follow = true)
         if (save()) send(request)
         else { session.stopped(request.id); render() }
@@ -593,7 +614,23 @@ class MainActivity : Activity() {
             if (!session.isActive(request.id)) return@onResult
             val follow = page == Page.CHAT && atBottom()
             when (result) {
-                is TransportResult.Reply -> session.reply(request.id, result.text)
+                is TransportResult.Reply -> {
+                    session.reply(request.id, result.text)
+                    val spoken = replyToSpeak
+                    if (spoken?.first == request.id) {
+                        replyToSpeak = null
+                        if (resumed && page == Page.CHAT && !menu && !recording && !transcribing && speechPreferences.readAloud) {
+                            replySpeech.speak(result.text, spoken.second) { state ->
+                                if (!resumed || isDestroyed) return@speak
+                                reading = state == ReplySpeechState.PREPARING || state == ReplySpeechState.PLAYING
+                                if (state == ReplySpeechState.FAILED && notice == null) {
+                                    notice = "Read aloud unavailable. The reply is in the chat."; noticeRevision++
+                                    if (page == Page.CHAT) render()
+                                }
+                            }
+                        }
+                    }
+                }
                 is TransportResult.Failure -> {
                     session.stopped(request.id)
                     notice = result.message; noticeRevision++
@@ -601,7 +638,7 @@ class MainActivity : Activity() {
                 is TransportResult.Waiting -> { notice = result.message; noticeRevision++ }
             }
             save()
-            if (page == Page.CHAT) render(follow && !menu) else updateLogo()
+            if (page == Page.CHAT) render(follow && !menu) else updateStatus()
         }
     }
 
@@ -613,7 +650,7 @@ class MainActivity : Activity() {
         var remaining = requests.size
         var unconfirmed = false
         var stopped = false
-        notice = "Anhalten angefragt …"
+        notice = "Stopping …"
         render()
         requests.forEach { request ->
             transport.cancel(request.id) { acknowledged ->
@@ -621,40 +658,33 @@ class MainActivity : Activity() {
                 else if (session.isActive(request.id)) unconfirmed = true
                 remaining--
                 if (remaining == 0 && revision == noticeRevision) notice = when {
-                    unconfirmed -> "Anhalten nicht bestätigt."
-                    stopped -> "Angehalten."
+                    unconfirmed -> "Stop not confirmed."
+                    stopped -> "Stopped."
                     else -> null
                 }
                 save()
-                if (page == Page.CHAT) render() else updateLogo()
+                if (page == Page.CHAT) render() else updateStatus()
             }
         }
     }
 
-    private fun updateLogo(animateStatus: Boolean = true) {
+    private fun updateStatus(animateStatus: Boolean = true) {
         val cameraVisible = page == Page.CAMERA || pairingView?.isScanning == true
         statusRail.visibility = if (page == Page.WELCOME || cameraVisible) View.GONE else View.VISIBLE
-        logo?.setPlaybackActive(resumed && !cameraVisible)
-        logo?.importantForAccessibility = if (cameraVisible) View.IMPORTANT_FOR_ACCESSIBILITY_NO else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
-        val textVisible = page != Page.CHAT || session.messages.isNotEmpty() || notice != null || menu
-        logo?.foregroundVisible = textVisible && !recording && (page != Page.CHAT || !resting || menu)
+        touchSurface.importantForAccessibility = if (page == Page.CHAT && !menu)
+            View.IMPORTANT_FOR_ACCESSIBILITY_YES else View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        touchSurface.contentDescription = if (resting) "Open chat" else "Hold to speak, tap for menu"
         statusRail.setCompact(!resting || recording || menu || page != Page.CHAT,
             animate = animateStatus)
         updateChatVisibility(animate = true)
-        logo?.setMode(when {
-            pairingView?.isPairing == true -> LogoMode.WAITING
-            recording -> LogoMode.LISTENING
-            transcribing -> LogoMode.WAITING
-            page == Page.CHAT && session.pending() -> LogoMode.WAITING
-            else -> LogoMode.QUIET
-        })
+
     }
 
     private fun updateChatVisibility(animate: Boolean) {
-        val showText = !recording && !menu && !resting
         // Text appears only once the moving glyphs have entered the original left gutter.
         val visibleFraction = ((statusRail.compactFraction - .96f) / .04f).coerceIn(0f, 1f)
         listOfNotNull(feed, chatNotice).forEach { view ->
+            val showText = !menu && !resting && (view === chatNotice || !recording)
             view.animate().cancel()
             if (view.visibility != View.GONE) view.visibility = if (resting || menu) View.INVISIBLE else View.VISIBLE
             val alpha = if (showText) visibleFraction else 0f
@@ -666,6 +696,7 @@ class MainActivity : Activity() {
 
     private fun press() {
         if (gesture.held) return
+        cancelReply() // Stop before the hold threshold, so speaker audio never enters the recording.
         actions(gesture.press(SystemClock.uptimeMillis(), page == Page.CHAT && !menu))
         scheduleGesture()
     }
@@ -719,16 +750,16 @@ class MainActivity : Activity() {
             SpeechEvent.Recording -> { recording = true; notice = null; noticeRevision++; render(animate = false) }
             SpeechEvent.Transcribing -> {
                 recording = false; transcribing = true
-                notice = "Erkenne Sprache …"; noticeRevision++; render(animate = false)
+                notice = "Transcribing …"; noticeRevision++; render(animate = false)
             }
             is SpeechEvent.Text -> { recording = false; transcribing = false; submit(event.text) }
             SpeechEvent.NoSpeech, SpeechEvent.Failed, SpeechEvent.TooLong, SpeechEvent.Unavailable -> {
                 recording = false; transcribing = false; resting = false
                 notice = when (event) {
-                    SpeechEvent.NoSpeech -> "Keine Sprache erkannt."
-                    SpeechEvent.TooLong -> "Aufnahme zu lang. Bitte höchstens 30 Sekunden sprechen."
-                    SpeechEvent.Unavailable -> "VM-Spracherkennung nicht verfügbar. Verbindung und VM-Einrichtung prüfen."
-                    else -> "Spracherkennung fehlgeschlagen. Bitte erneut sprechen."
+                    SpeechEvent.NoSpeech -> "No speech detected."
+                    SpeechEvent.TooLong -> "Recording too long. Speak for up to 30 seconds."
+                    SpeechEvent.Unavailable -> "VM speech recognition unavailable. Check the connection and VM setup."
+                    else -> "Speech recognition failed. Try speaking again."
                 }
                 noticeRevision++; render(animate = false)
             }
@@ -737,14 +768,19 @@ class MainActivity : Activity() {
 
     private fun cancelSpeech(showNotice: Boolean = false) {
         val wasActive = recording || transcribing
-        val hadNotice = notice != null
         speech.cancel()
         recording = false; transcribing = false
         if (wasActive) {
-            notice = if (showNotice) "Aufnahme verworfen." else null
+            notice = if (showNotice) "Recording discarded." else null
             noticeRevision++
-            if (page == Page.CHAT && (showNotice || hadNotice)) render(animate = false) else updateLogo()
+            if (page == Page.CHAT) render(animate = false) else updateStatus()
         }
+    }
+
+    private fun cancelReply() {
+        replyToSpeak = null
+        reading = false
+        if (::replySpeech.isInitialized) replySpeech.cancel()
     }
 
     private fun rotate(amount: Float) {
@@ -752,12 +788,12 @@ class MainActivity : Activity() {
         if (pairingView?.isScanning == true) return
         if (gesture.held) { actions(gesture.rotate()); scheduleGesture(); return }
         actions(gesture.flushClick()); scheduleGesture()
-        if (resting && page == Page.CHAT) { resting = false; updateLogo(); return }
+        if (resting && page == Page.CHAT) { resting = false; updateStatus(); return }
         if (navigation.isNotEmpty()) {
             selection = (selection + amount.sign.toInt()).coerceIn(navigation.indices)
             highlightSelection()
             navigation[selection].first.let { it.requestRectangleOnScreen(android.graphics.Rect(0, 0, it.width, it.height)) }
-        } else feed?.scrollBy(0, (amount * dp(48)).roundToInt())
+        } else feed?.scrollByWheel((amount * dp(48)).roundToInt())
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
@@ -804,6 +840,7 @@ class MainActivity : Activity() {
     private fun back() {
         when {
             gesture.held || gesture.hasPendingClick -> abortPress()
+            reading -> cancelReply()
             transcribing -> cancelSpeech(showNotice = true)
             page == Page.CAMERA -> closeCamera()
             menu -> { menu = false; render() }
@@ -811,13 +848,13 @@ class MainActivity : Activity() {
             page == Page.PAIRING -> closePairing()
             page == Page.NETWORK -> { if (networkView?.handleBack() != true) closeNetwork() }
             page == Page.LANGUAGE -> { page = languageReturn; selection = 0; render() }
-            page == Page.CHAT && !resting -> { resting = true; updateLogo() }
+            page == Page.CHAT && !resting -> { resting = true; updateStatus() }
             else -> Unit // The rest screen is the device home; Back must not expose Android.
         }
     }
 
     private fun save(): Boolean {
         return try { storage.save(session.snapshot().copy(backendId = transport.identity)); true }
-        catch (_: Exception) { notice = "Chat konnte nicht gespeichert werden."; noticeRevision++; false }
+        catch (_: Exception) { notice = "Chat could not be saved."; noticeRevision++; false }
     }
 }

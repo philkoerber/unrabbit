@@ -1,0 +1,46 @@
+{
+  "repository": "rhasspy/piper-voices",
+  "revision": "e9ab671f2a0e50a701b34361136ba3e6a3a9eb0c",
+  "voices": {
+    "en": {
+      "name": "en_US-amy-medium",
+      "files": [
+        {
+          "path": "en/en_US/amy/medium/en_US-amy-medium.onnx",
+          "size": 63221984,
+          "sha256": "cf9ccdec59f05adee47173f6fb4d89e8b0c5f30c178748d2572fe4efd1d2724c"
+        },
+        {
+          "path": "en/en_US/amy/medium/en_US-amy-medium.onnx.json",
+          "size": 5465,
+          "sha256": "8c9b8aa3ee122c6a63678bd68e586a067c6775116d32e13b7ec919520d8948bf"
+        },
+        {
+          "path": "en/en_US/amy/medium/MODEL_CARD",
+          "size": 461,
+          "sha256": "01937275ee0231667fdfb8eec381948acdc9ace98d4bab625dd30dc55c0f3cfe"
+        }
+      ]
+    },
+    "de": {
+      "name": "de_DE-ramona-low",
+      "files": [
+        {
+          "path": "de/de_DE/ramona/low/de_DE-ramona-low.onnx",
+          "size": 63104526,
+          "sha256": "a1068592532aad8c49bf3d1a01b8749c11d7dba726689ee28ad64e7b627ae4c5"
+        },
+        {
+          "path": "de/de_DE/ramona/low/de_DE-ramona-low.onnx.json",
+          "size": 4157,
+          "sha256": "64906ab7a050ac685fa3dcea044baa798f67ed77be164f9c668a69298c6487d2"
+        },
+        {
+          "path": "de/de_DE/ramona/low/MODEL_CARD",
+          "size": 255,
+          "sha256": "3b6dbf2cde464e35cbdd3c06fccb34bf8cd590878c251391e9fd0a6f1bb993da"
+        }
+      ]
+    }
+  }
+}

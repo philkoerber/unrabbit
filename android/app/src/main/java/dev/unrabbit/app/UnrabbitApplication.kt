@@ -10,6 +10,7 @@ import androidx.camera.core.CameraXConfig
 /** Select an actually present lens, including devices that advertise a nonexistent second camera. */
 open class UnrabbitApplication : Application(), CameraXConfig.Provider {
     internal open fun createSpeechInput(): SpeechInput = PushToTalkInput(this)
+    internal open fun createReplySpeech(): ReplySpeech = VmReplySpeech(this)
     override fun getCameraXConfig(): CameraXConfig {
         val manager = getSystemService(CameraManager::class.java)
         val facing = runCatching {

@@ -40,7 +40,7 @@ class WizardTests(unittest.TestCase):
         return result, output.getvalue()
 
     def test_detected_host_but_separate_application_ssh_port(self):
-        hint = ConnectionHint("203.0.113.10", 22, "SSH-Verbindung")
+        hint = ConnectionHint("203.0.113.10", 22, "SSH connection")
         self.wizard(f"2\n\n\n{self.root}/work\n\n", hint=hint)
         saved = load_config(self.path)
         self.assertEqual("203.0.113.10", saved["connection"]["host"])
@@ -55,7 +55,7 @@ class WizardTests(unittest.TestCase):
         config, output = self.wizard(f"2\n\n-\nvm.example.net\n22\n2222\n{self.root}/work\n\n")
         self.assertEqual("vm.example.net", config["connection"]["host"])
         self.assertEqual(2222, config["connection"]["port"])
-        self.assertIn("Port ab 1024", output)
+        self.assertIn("port of 1024 or higher", output)
         self.assertNotIn("local_vm.py attach", output)
 
     def test_complete_config_uses_own_persistent_host_identity_and_no_invitation(self):
@@ -106,7 +106,7 @@ class WizardTests(unittest.TestCase):
         self.assertEqual(["/opt/codex", "login", "status"], run.call_args_list[1].args[0])
         self.assertEqual(subprocess.DEVNULL, run.call_args_list[1].kwargs["stderr"])
         with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, "old CLI")) as run:
-            self.assertIn("aktualisieren", check_codex("/opt/codex"))
+            self.assertIn("Update the CLI", check_codex("/opt/codex"))
             self.assertEqual(1, run.call_count)
 
     def test_terminal_qr_has_explicit_contrast_and_complete_quiet_zone(self):

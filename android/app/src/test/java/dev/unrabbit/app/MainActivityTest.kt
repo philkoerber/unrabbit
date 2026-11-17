@@ -35,7 +35,7 @@ class MainActivityTest {
                 (it.isClickable && it.contentDescription == label)
         }.performClick()
         // Let the fixture deliver its initial window-focus event and the welcome transition.
-        if (label == "Demo öffnen") shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
+        if (label == "Open demo") shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
     }
     private fun down(activity: MainActivity, code: Int = KeyEvent.KEYCODE_DPAD_LEFT) {
         activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
@@ -61,7 +61,7 @@ class MainActivityTest {
     @Test fun doublePressFromRestOrChatOpensCameraWithoutMenuOrAccidentalPhoto() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         doubleTap(activity)
         assertEquals(1, views(activity).filterIsInstance<PhotoCameraView>().size)
         assertEquals(listOf(MenuIcon.CLOSE), views(activity).filterIsInstance<MenuIconView>().map { it.icon })
@@ -71,13 +71,13 @@ class MainActivityTest {
         val close = views(activity).filterIsInstance<MenuIconView>().single()
         assertFalse(close.isSelected || close.isFocusable)
         assertEquals(View.GONE, views(activity).filterIsInstance<StatusRailView>().single().visibility)
-        click(activity, "Kamera schließen")
+        click(activity, "Close camera")
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
         assertEquals(0f, views(activity).filterIsInstance<StatusRailView>().single().compactFraction, .001f)
         tap(activity) // Chat
         doubleTap(activity)
         assertEquals(1, views(activity).filterIsInstance<PhotoCameraView>().size)
-        click(activity, "Kamera schließen")
+        click(activity, "Close camera")
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
         assertEquals(1f, views(activity).filterIsInstance<StatusRailView>().single().compactFraction, .001f)
         assertTrue(LocalStorage(activity).load()!!.messages.isEmpty())
@@ -87,7 +87,7 @@ class MainActivityTest {
     @Test fun photoResultAppendsOnceAndSurvivesRestartWithoutFakeAnalysis() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen"); doubleTap(activity)
+        click(activity, "Open demo"); doubleTap(activity)
         val photo = dev.unrabbit.core.PhotoAttachment(java.util.UUID.randomUUID().toString(), 800, 600)
         org.robolectric.util.ReflectionHelpers.callInstanceMethod<Unit>(activity, "attachPhoto",
             org.robolectric.util.ReflectionHelpers.ClassParameter.from(dev.unrabbit.core.PhotoAttachment::class.java, photo))
@@ -106,7 +106,7 @@ class MainActivityTest {
     @Test fun draftPhotoWaitsThroughCancelledSpeechAndReachesTransportWithTheNextUtteranceOnly() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         val sent = mutableListOf<dev.unrabbit.core.ChatRequest>()
         val transport = object : dev.unrabbit.core.ChatTransport {
             override fun send(request: dev.unrabbit.core.ChatRequest, onResult: (dev.unrabbit.core.TransportResult) -> Unit) { sent += request }
@@ -144,7 +144,7 @@ class MainActivityTest {
     @Test fun leavingTheAppDuringTheDoublePressWindowCancelsThePendingClick() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         down(activity); up(activity)
         controller.pause()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
@@ -155,37 +155,10 @@ class MainActivityTest {
         controller.pause().stop().destroy()
     }
 
-    @Test fun logoStopsSchedulingWhileActivityIsPausedAndResumesOnWake() {
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup().visible()
-        val logo = views(controller.get()).filterIsInstance<LogoView>().single()
-        // There is no real window manager in this fixture; simulate its visibility notification.
-        fun showWindow() {
-            val attachInfo = org.robolectric.util.ReflectionHelpers.getField<Any>(logo, "mAttachInfo")
-            org.robolectric.util.ReflectionHelpers.setField(attachInfo, "mWindowVisibility", View.VISIBLE)
-            logo.dispatchWindowVisibilityChanged(View.VISIBLE)
-        }
-        showWindow()
-        // Legacy Robolectric shadows View.draw; invoke this view's actual drawing callback.
-        fun drawLogo() = org.robolectric.util.ReflectionHelpers.callInstanceMethod<Unit>(logo, "onDraw",
-            org.robolectric.util.ReflectionHelpers.ClassParameter.from(android.graphics.Canvas::class.java, android.graphics.Canvas()))
-        drawLogo()
-        assertTrue(logo.hasScheduledFrame)
-        controller.pause()
-        assertFalse(logo.hasScheduledFrame)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
-        drawLogo() // Even a late redraw must not restart the paused loop.
-        assertFalse(logo.hasScheduledFrame)
-        controller.resume()
-        showWindow()
-        drawLogo()
-        assertTrue(logo.hasScheduledFrame)
-        controller.pause().stop().destroy()
-    }
-
     @Test fun holdCreatesPlainChatMessagesAndShortPressOpensRealActions() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         up(activity)
@@ -193,7 +166,7 @@ class MainActivityTest {
         val messages = views(activity).filterIsInstance<TextView>().filter { it.text.contains("Radio", true) }
         assertEquals(2, messages.size)
         assertTrue(messages.none { it.isClickable || it.isFocusable || it is Button })
-        assertTrue(views(activity).filterIsInstance<TextView>().none { it.text.contains("ICH HÖRE ZU") })
+        assertTrue(views(activity).filterIsInstance<TextView>().none { it.text.contains("LISTENING") })
         tap(activity)
         val icons = views(activity).filterIsInstance<MenuIconView>()
         assertEquals(listOf(MenuIcon.SETTINGS, MenuIcon.CLOSE), icons.map { it.icon })
@@ -212,20 +185,24 @@ class MainActivityTest {
     @Test fun wheelDuringHoldCancelsWithoutAddingMessage() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         down(activity, KeyEvent.KEYCODE_DPAD_DOWN)
         up(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
         assertTrue(views(activity).filterIsInstance<TextView>().none { it.text.contains("Radio", true) })
+        tap(activity) // Return from rest after cancelling the recording.
+        assertTrue(views(activity).filterIsInstance<TextView>().none {
+            it.text.startsWith("Listening") || it.text.startsWith("Transcribing")
+        })
         controller.pause().stop().destroy()
     }
 
     @Test fun leftKeyRepeatSendsOnlyOnceAndReplyArrivingDuringAnotherHoldIsNotHiddenAfterCancel() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         down(activity)
         activity.dispatchKeyEvent(KeyEvent(0, 200, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 1))
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
@@ -246,7 +223,7 @@ class MainActivityTest {
     @Test fun menuStopCancelsAllCurrentDemoRequestsAndLaterInputStillWorks() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         repeat(2) {
             down(activity)
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
@@ -259,7 +236,7 @@ class MainActivityTest {
         tap(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
         assertEquals(2, LocalStorage(activity).load()!!.messages.size)
-        assertTrue(views(activity).filterIsInstance<TextView>().any { it.text == "Angehalten." })
+        assertTrue(views(activity).filterIsInstance<TextView>().any { it.text == "Stopped." })
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         up(activity)
@@ -271,14 +248,13 @@ class MainActivityTest {
     @Test fun settingsUseVerticalActionsAndHostScanWithoutTextInputOrCameraWheelActions() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen"); openSettings(activity)
+        click(activity, "Open demo"); openSettings(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(350))
         val panel = views(activity).filterIsInstance<SettingsView>().single()
         val rows = panel.navigation.map { it.first }
         assertTrue(rows.zipWithNext().all { (a, b) -> a.bottom <= b.top })
         val icons = views(activity).filterIsInstance<MenuIconView>()
-        assertEquals(4, panel.navigation.size)
-        assertTrue(icons.none { it.icon == MenuIcon.SAVE })
+        assertEquals(5, panel.navigation.size)
         assertTrue(views(activity).none { it is EditText })
         shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
         tap(activity) // The settings action directly opens the separate scanner flow.
@@ -287,11 +263,11 @@ class MainActivityTest {
         assertTrue(pairing.isScanning)
         assertTrue(pairing.navigation.isEmpty())
         assertEquals(View.GONE, views(activity).filterIsInstance<StatusRailView>().single().visibility)
-        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, views(activity).filterIsInstance<LogoView>().single().importantForAccessibility)
+        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, views(activity).single { it.tag == "unrabbit-background" }.importantForAccessibility)
         tap(activity, KeyEvent.KEYCODE_DPAD_DOWN); tap(activity)
         assertTrue(pairing.isScanning)
         assertTrue(LocalStorage(activity).load()!!.messages.isEmpty())
-        val close = views(activity).filterIsInstance<MenuIconView>().single { it.contentDescription == "Scan abbrechen" }
+        val close = views(activity).filterIsInstance<MenuIconView>().single { it.contentDescription == "Cancel scan" }
         assertFalse(close.isSelected || close.isFocusable)
         close.performClick()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(350))
@@ -305,7 +281,7 @@ class MainActivityTest {
     @Test fun restartAndMenuKeepTheSameStreamWithoutChatManagement() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         up(activity)
@@ -324,35 +300,31 @@ class MainActivityTest {
         up(next.get())
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
         assertEquals(4, LocalStorage(next.get()).load()!!.messages.size)
-        assertTrue(views(next.get()).filterIsInstance<TextView>().none { it.text.contains("Neues Gespräch") })
+        assertTrue(views(next.get()).filterIsInstance<TextView>().none { it.text.contains("New conversation") })
         next.pause().stop().destroy()
     }
 
-    @Test fun backgroundSurvivesChatUpdatesAndListeningTemporarilyHidesText() {
+    @Test fun touchSurfaceSurvivesChatUpdatesAndListeningTemporarilyHidesText() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
-        val background = views(activity).filterIsInstance<LogoView>().single()
-        assertFalse(background.foregroundVisible)
+        click(activity, "Open demo")
+        val background = views(activity).single { it.tag == "unrabbit-background" }
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         up(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
-        assertSame(background, views(activity).filterIsInstance<LogoView>().single())
-        assertTrue(background.foregroundVisible)
+        assertSame(background, views(activity).single { it.tag == "unrabbit-background" })
         assertEquals((background.parent as View).height, background.height)
 
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(700))
         val feed = views(activity).filterIsInstance<ScrollView>().single()
-        assertFalse(background.foregroundVisible)
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS, feed.importantForAccessibility)
         assertEquals(0f, feed.alpha, .01f)
         down(activity, KeyEvent.KEYCODE_DPAD_DOWN)
         up(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(300))
-        assertTrue(background.foregroundVisible)
-        assertEquals(1f, feed.alpha, .01f)
+        assertEquals(1f, views(activity).filterIsInstance<ScrollView>().single().alpha, .01f)
         assertEquals(2, views(activity).filterIsInstance<TextView>().count { it.text.contains("Radio", true) })
         controller.pause().stop().destroy()
     }
@@ -360,7 +332,7 @@ class MainActivityTest {
     @Test fun restClockShrinksContinuouslyIntoTheUnchangedChatMargin() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         up(activity)
@@ -391,11 +363,11 @@ class MainActivityTest {
     @Test fun settingsHaveNoManualFieldsAndClosingKeepsChat() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen"); openSettings(activity)
+        click(activity, "Open demo"); openSettings(activity)
         val panel = views(activity).filterIsInstance<SettingsView>().single()
-        assertEquals(listOf("VM verbinden", "WLAN & SIM", "Sprache · English", "Zurück"), panel.navigation.map { it.first.contentDescription.toString() })
+        assertEquals(listOf("Connect VM", "Wi-Fi & SIM", "Language · English", "Read aloud · On", "Back"), panel.navigation.map { it.first.contentDescription.toString() })
         assertTrue(views(activity).none { it is EditText || it.tag in listOf("vm-host", "vm-port", "vm-user", "vm-host-key") })
-        click(activity, "Zurück")
+        click(activity, "Back")
         assertFalse(PairingStore(activity).hasPairing())
         assertTrue(LocalStorage(activity).load()!!.messages.isEmpty())
         controller.pause().stop().destroy()
@@ -406,16 +378,16 @@ class MainActivityTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
         repeat(2) { attempt ->
-            click(activity, "VM verbinden")
+            click(activity, "Connect VM")
             assertTrue(views(activity).filterIsInstance<PairingView>().single().isScanning)
             assertTrue(views(activity).none { it is SettingsView })
-            if (attempt == 0) click(activity, "Scan abbrechen") else {
+            if (attempt == 0) click(activity, "Cancel scan") else {
                 @Suppress("DEPRECATION")
                 activity.onBackPressed()
             }
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
             assertTrue(views(activity).none { it is SettingsView || it is PairingView || it is SetupScannerView })
-            assertTrue(views(activity).filterIsInstance<Button>().any { it.text == "VM verbinden" })
+            assertTrue(views(activity).filterIsInstance<Button>().any { it.text == "Connect VM" })
             assertFalse(LocalStorage(activity).preferences.getBoolean("demoAcknowledged", false))
         }
         controller.pause().stop().destroy()
@@ -424,17 +396,17 @@ class MainActivityTest {
     @Test fun deniedCameraCanBeRetriedInTheSameFlowWithoutOpeningSettings() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "VM verbinden")
+        click(activity, "Connect VM")
         activity.onRequestPermissionsResult(71, arrayOf(android.Manifest.permission.CAMERA),
             intArrayOf(android.content.pm.PackageManager.PERMISSION_DENIED))
         val pairing = views(activity).filterIsInstance<PairingView>().single()
         assertFalse(pairing.isScanning)
-        assertEquals(listOf("QR erneut scannen", "Zurück"), pairing.navigation.map { it.first.contentDescription })
+        assertEquals(listOf("Scan QR again", "Back"), pairing.navigation.map { it.first.contentDescription })
         assertTrue(views(activity).none { it is SettingsView })
         shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
-        click(activity, "QR erneut scannen")
+        click(activity, "Scan QR again")
         assertTrue(pairing.isScanning)
-        click(activity, "Scan abbrechen")
+        click(activity, "Cancel scan")
         assertFalse(PairingStore(activity).hasPairing())
         controller.pause().stop().destroy()
     }
@@ -443,16 +415,16 @@ class MainActivityTest {
         shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.CAMERA)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen"); openSettings(activity)
+        click(activity, "Open demo"); openSettings(activity)
         val before = LocalStorage(activity).load()
-        click(activity, "VM verbinden")
+        click(activity, "Connect VM")
         val pairing = views(activity).filterIsInstance<PairingView>().single()
         pairing.closeCamera(); pairing.setPairing(true)
-        assertEquals(listOf("Zurück"), pairing.navigation.map { it.first.contentDescription })
-        pairing.showError("Verbindung fehlgeschlagen.")
-        click(activity, "QR erneut scannen")
+        assertEquals(listOf("Back"), pairing.navigation.map { it.first.contentDescription })
+        pairing.showError("Connection failed.")
+        click(activity, "Scan QR again")
         assertTrue(pairing.isScanning)
-        click(activity, "Scan abbrechen")
+        click(activity, "Cancel scan")
         assertEquals(1, views(activity).filterIsInstance<SettingsView>().size)
         assertEquals(before, LocalStorage(activity).load())
         assertFalse(PairingStore(activity).hasPairing())
@@ -462,12 +434,12 @@ class MainActivityTest {
     @Test fun menuCrossfadeCanBeInterruptedAndRestIsDeviceHome() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
-        val logo = views(activity).filterIsInstance<LogoView>().single()
+        click(activity, "Open demo")
+        val touchSurface = views(activity).single { it.tag == "unrabbit-background" }
         tap(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
         // Exercise the transition at its start via the accessible click action; gesture timing is tested separately.
-        logo.performClick()
+        touchSurface.performClick()
         val opening = views(activity).single { it.tag == "unrabbit-content" }
         assertEquals(0f, opening.alpha, .001f)
         @Suppress("DEPRECATION")
@@ -478,7 +450,7 @@ class MainActivityTest {
         assertEquals(1f, menu.alpha, .001f)
         assertEquals(0f, menu.translationY, .001f)
         assertEquals(2, views(activity).filterIsInstance<MenuIconView>().size)
-        assertSame(logo, views(activity).filterIsInstance<LogoView>().single())
+        assertSame(touchSurface, views(activity).single { it.tag == "unrabbit-background" })
         @Suppress("DEPRECATION")
         activity.onBackPressed() // Menu → chat.
         @Suppress("DEPRECATION")
@@ -492,14 +464,14 @@ class MainActivityTest {
     @Test fun languageCanBeChosenDuringSetupAndChangedInSettingsWithoutPairingOrHistoryLoss() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Sprache · English")
-        click(activity, "Deutsch")
+        click(activity, "Language · English")
+        click(activity, "German")
         assertEquals(SpeechLanguage.GERMAN, SpeechPreferences(activity).language)
-        assertTrue(views(activity).filterIsInstance<Button>().any { it.text == "VM verbinden" })
+        assertTrue(views(activity).filterIsInstance<Button>().any { it.text == "Connect VM" })
         assertFalse(PairingStore(activity).hasPairing())
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         openSettings(activity)
-        click(activity, "Sprache · Deutsch")
+        click(activity, "Language · German")
         click(activity, "English")
         assertTrue(views(activity).any { it is SettingsView })
         assertEquals(SpeechLanguage.ENGLISH, SpeechPreferences(activity).language)
@@ -507,10 +479,64 @@ class MainActivityTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun readAloudDefaultsOnCanBeDisabledAndSurvivesActivityRestart() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        assertTrue(SpeechPreferences(activity).readAloud)
+        click(activity, "Open demo"); openSettings(activity)
+        click(activity, "Read aloud · On")
+        assertFalse(SpeechPreferences(activity).readAloud)
+        assertTrue(views(activity).filterIsInstance<Button>().any { it.text == "Read aloud · Off" })
+        controller.pause().stop().destroy()
+        val next = Robolectric.buildActivity(MainActivity::class.java).setup()
+        assertFalse(SpeechPreferences(next.get()).readAloud)
+        openSettings(next.get()); click(next.get(), "Read aloud · Off")
+        assertTrue(SpeechPreferences(next.get()).readAloud)
+        next.pause().stop().destroy()
+    }
+
+    @Test fun onlyFreshForegroundReplySpeaksAndAudioFailureKeepsTextAndPairing() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get(); click(activity, "Open demo")
+        val callbacks = mutableListOf<(dev.unrabbit.core.TransportResult) -> Unit>()
+        val transport = object : dev.unrabbit.core.ChatTransport {
+            override fun send(request: dev.unrabbit.core.ChatRequest, onResult: (dev.unrabbit.core.TransportResult) -> Unit) { callbacks += onResult }
+            override fun cancel(requestId: String, onAcknowledged: (Boolean) -> Unit) = onAcknowledged(true)
+            override fun close() = Unit
+        }
+        org.robolectric.util.ReflectionHelpers.setField(activity, "transport", transport)
+        fun submit() = org.robolectric.util.ReflectionHelpers.callInstanceMethod<Unit>(activity, "submit",
+            org.robolectric.util.ReflectionHelpers.ClassParameter.from(String::class.java, "Hello"))
+        val output = (activity.application as SpeechTestApplication).replies
+        submit(); callbacks[0](dev.unrabbit.core.TransportResult.Reply("Fresh answer"))
+        assertEquals(listOf("Fresh answer"), output.texts)
+        output.listener!!(ReplySpeechState.FAILED)
+        assertEquals("Fresh answer", LocalStorage(activity).load()!!.messages.last().text)
+        assertTrue(views(activity).filterIsInstance<TextView>().any { it.text.contains("Read aloud unavailable") })
+        submit(); controller.pause().resume()
+        callbacks[1](dev.unrabbit.core.TransportResult.Reply("Recovered answer"))
+        assertEquals(listOf("Fresh answer"), output.texts)
+        SpeechPreferences(activity).readAloud = false
+        submit(); callbacks[2](dev.unrabbit.core.TransportResult.Reply("Silent answer"))
+        assertEquals(listOf("Fresh answer"), output.texts)
+        SpeechPreferences(activity).readAloud = true
+        submit(); callbacks[3](dev.unrabbit.core.TransportResult.Reply("Interrupt me"))
+        output.listener!!(ReplySpeechState.PLAYING)
+        val count = output.cancelled
+        down(activity)
+        assertTrue(output.cancelled > count) // Before the recording hold threshold.
+        up(activity)
+        controller.pause().stop().destroy()
+        val next = Robolectric.buildActivity(MainActivity::class.java).setup()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertEquals(listOf("Fresh answer", "Interrupt me"), output.texts)
+        next.pause().stop().destroy()
+    }
+
     @Test fun deniedMicrophoneDoesNotSubmitTextOrConsumePhotoDrafts() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
-        click(activity, "Demo öffnen")
+        click(activity, "Open demo")
         shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).denyPermissions(android.Manifest.permission.RECORD_AUDIO)
         down(activity)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
@@ -518,13 +544,15 @@ class MainActivityTest {
         activity.onRequestPermissionsResult(73, arrayOf(android.Manifest.permission.RECORD_AUDIO),
             intArrayOf(android.content.pm.PackageManager.PERMISSION_DENIED))
         assertTrue(LocalStorage(activity).load()!!.messages.isEmpty())
-        assertTrue(views(activity).filterIsInstance<TextView>().any { it.text.contains("Mikrofonzugriff fehlt") })
+        assertTrue(views(activity).filterIsInstance<TextView>().any { it.text.contains("Microphone access required") })
         controller.pause().stop().destroy()
     }
 }
 
 /** Existing UI scenarios use an injected recognizer, never a production simulated speech path. */
 class SpeechTestApplication : UnrabbitApplication() {
+    internal val replies = FakeReplySpeech()
+    internal override fun createReplySpeech(): ReplySpeech = replies
     internal override fun createSpeechInput(): SpeechInput = object : SpeechInput {
         private var listener: ((SpeechEvent) -> Unit)? = null
         override fun start(language: SpeechLanguage, listener: (SpeechEvent) -> Unit) {
@@ -539,4 +567,15 @@ class SpeechTestApplication : UnrabbitApplication() {
         override fun cancel() { listener = null }
         override fun close() = cancel()
     }
+}
+
+internal class FakeReplySpeech : ReplySpeech {
+    val texts = mutableListOf<String>()
+    var cancelled = 0
+    var listener: ((ReplySpeechState) -> Unit)? = null
+    override fun speak(text: String, language: SpeechLanguage, listener: (ReplySpeechState) -> Unit) {
+        texts += text; this.listener = listener
+    }
+    override fun cancel() { cancelled++; listener = null }
+    override fun close() = cancel()
 }

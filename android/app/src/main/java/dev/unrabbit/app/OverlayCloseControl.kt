@@ -14,7 +14,7 @@ internal fun FrameLayout.addOverlayCloseControl(label: String, onClose: () -> Un
         minimumHeight = 0
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(0x99171915.toInt())
+            setColor(android.graphics.Color.BLACK)
         }
         setOnClickListener { onClose() }
     }

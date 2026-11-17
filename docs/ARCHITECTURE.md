@@ -2,12 +2,14 @@
 
 The device handles interaction; one user-owned Ubuntu VM handles the work. The QR wizard connects the device directly to that VM; an Ubuntu container remains available for local development.
 
-The current product milestone is the r1-to-Codex request/reply loop. Future email, Notion and research integrations will use MCP servers configured on the VM, with their credentials kept there. They are outside the current implementation scope. The device records audio; the VM transcribes it and runs the agent. Reply audio remains planned.
+The current product milestone is the r1-to-Codex request/reply loop. Future email, Notion and research integrations will use MCP servers configured on the VM, with their credentials kept there. They are outside the current implementation scope. The device records audio; the VM transcribes it and runs the agent. The VM also synthesizes reply audio, which the device plays.
 
 ```mermaid
 flowchart LR
     App["Unrabbit · Android microphone + AAC"] -->|"Pinned SSH · audio"| STT["Ubuntu VM · Silero + Whisper base"]
     STT -->|"Recognized text"| App
+    App -->|"Reply prose sections"| TTS["Ubuntu VM · Piper"]
+    TTS -->|"AAC/MP4 · pinned SSH"| App
     App -->|"Pinned SSH · text + photos"| VM["Ubuntu chat service"]
     VM --> DB["SQLite · jobs, messages, photos"]
     VM --> Worker["Ordered worker + bounded context"]
@@ -21,13 +23,17 @@ flowchart LR
 
 Foreground push-to-talk captures up to 30 seconds of 16 kHz mono PCM in device memory. Android's platform encoder produces AAC-LC at 32 kbit/s. A separate, ephemeral request sends this audio over the existing pinned SSH protocol. The VM uses CPU INT8 faster-whisper `base` and a Silero speech-presence check, retaining the complete utterance when speech is present. It returns text without creating an agent job. Only then does the app submit recognized text and waiting photos through the durable chat transport. Audio is not saved on the device or VM and is not sent to a hosted speech provider.
 
-Welcome and settings offer an explicit spoken language, English by default or German, independently of future reply audio. This skips automatic language detection; it does not shrink the model. The r1 benchmark held vocabulary hints constant: explicit language reduced `base` recognition from roughly eleven–twelve seconds to six seconds on the two microphone clips, before silence detection. Automatic language switching is outside the initial scope.
+Welcome and settings offer an explicit spoken language, English by default or German. This also selects the reply voice. This skips automatic language detection; it does not shrink the model. The r1 benchmark held vocabulary hints constant: explicit language reduced `base` recognition from roughly eleven–twelve seconds to six seconds on the two microphone clips, before silence detection. Automatic language switching is outside the initial scope.
 
 `speech-setup` downloads a revision-pinned model into the service account's data directory. The service loads it once at startup, without runtime model downloads, and accepts one recognition at a time. Missing setup returns 503; concurrent recognition returns 429. The API validates format, language, compressed size and AAC frame count before decoding, bounding audio to 30 seconds plus encoder padding. It accepts no file paths or remote URLs. The Android app contains no native recognition library or speech weights.
 
 Each recording has its own cancellation identity. Leaving the foreground or cancelling stops capture, closes the speech connection and drops late callbacks. Already-started inference may finish on the VM, but it cannot start Codex or submit a chat request. Audio uploads are not queued or automatically retried; a failed upload requires a new recording. This differs from durable text/photo jobs, which recover after reconnect. Network availability, upload time and shared VM load now affect speech latency.
 
-Reply audio will offer local synthesis by default and optional OpenAI with a user-provided API key. Choosing OpenAI for read-aloud will not change the transcription path. The proposed credential flow uses private input in the VM wizard and keeps the key on the VM, out of the pairing QR, device storage, agent context and logs. Other speech providers can follow later. Specific models, voices and local synthesis placement are still to be selected; none of this flow is implemented. OpenAI integration must use the [current official audio guidance](https://developers.openai.com/api/docs/guides/text-to-speech) when implemented.
+Reply audio uses Piper 1.8.0 on the VM, with Amy medium (`en_US`) and Ramona low (`de_DE`). `tts-setup` downloads revision- and SHA-256-pinned weights/configs/model cards. Both voices load at service startup; synthesis accepts one section at a time, independently of recognition and chat. No speech provider or API key is involved.
+
+Text is displayed first. The app strips fenced code, raw URLs and common Markdown syntax, then reads prose in sections (first at most 160 characters, later sections at most 240; first 16,000 source characters). The VM bounds each generated clip to 30 seconds / 256 KiB, encodes AAC at 48 kbit/s in MP4 and returns it through the existing authenticated SSH protocol. The device prepares one next section while the current section plays; at most two compressed clips are retained in memory. Reply audio and extra synthesis text are not persisted or logged.
+
+Playback is enabled by default with a persistent settings toggle and uses Android audio focus. A new press stops playback before the recording threshold. Pause, focus loss, leaving chat, disabling playback or switching VM cancels fetching/playback and rejects stale callbacks. An already-started VM section may finish after disconnection. No audio is queued for reconnect, and restored/recovered chat replies are not spoken automatically. Audio failure leaves the text usable. Hosted voices, private VM-side API-key entry and additional providers remain planned.
 
 ## Device
 
@@ -37,13 +43,13 @@ A photo remains an unsent draft until the next valid submission. Up to four phot
 
 The local HTTP transport accepts only loopback URLs installed by the emulator helper. It stops polling when paused, backs off on transient failures, and makes no status calls when no work is outstanding. Release builds include the SSH transport and internet permission, but no debug HTTP adapter.
 
-One visible chat does not mean deleted history. The app retains full local history; the service retains submitted requests and results. A bounded device cache and multi-device synchronization remain future work. Previous standalone demo messages are not automatically uploaded.
+The app retains local text history; the service retains submitted requests and results. Photo files expire after seven days, with placeholders left in the chat. Schema 5 persists capture timestamps; legacy images inherit their original file modification time. An offline, persisted Android JobScheduler task cleans old image files hourly (subject to Android scheduling), and cleanup also runs on resume. Expired photos cannot be displayed or newly uploaded, and old unsent drafts do not join new requests. Multi-device synchronization and broader text-history/cache bounds remain future work. Previous standalone demo messages are not automatically uploaded.
 
 ## Ubuntu service
 
-Python, AsyncSSH, SQLite and a single worker, running under an unprivileged user. Requests and photo bytes are committed together. Original data survives context-window reduction. Cancellation wins over late results. After a server crash, running jobs are marked interrupted rather than silently replayed; untouched queued jobs resume.
+Python, AsyncSSH, SQLite and a single worker, running under an unprivileged user. Requests and photo bytes are committed together. Text survives context-window reduction; photo bytes expire seven days after capture (legacy records use original receipt time). Cleanup runs on startup, in the worker loop including idle time, and before context selection. SQLite secure deletion and a WAL checkpoint clear expired BLOBs while preserving metadata/digests for history and idempotence. Cancellation wins over late results. After a server crash, running jobs are marked interrupted rather than silently replayed; untouched queued jobs resume unless their required photos have expired.
 
-The server selects context from recent completed turns and controls the agent/workspace. The optional Codex adapter receives current photos and that context via a fresh, read-only CLI invocation. Its execution contract is fixture-tested, and a live text response/recovery round trip has been verified with the emulator. Semantic summarization, model-driven tool/image workflows and tool/project routing remain unverified or unimplemented.
+The server selects at most 20 recent completed turns within a 24,000-character text budget and controls the agent/workspace. The optional Codex adapter receives current photos plus the newest available photos from those turns, within a four-image total, via a fresh read-only CLI invocation. Numbered attachments are mapped to their original turns so follow-up questions can inspect the same image. Job temporary copies are removed after each invocation; expiry during a call stops it. Its execution contract and image-follow-up path are fixture-tested. Semantic summarization and tool/project routing remain unverified or unimplemented.
 
 The opt-in `compose.codex.yaml` installs Codex in Ubuntu, with a separate login and workspace in named Docker volumes. No host home directory, host authentication or Docker socket is mounted. The default Compose configuration remains an offline demo. See the [local Codex setup](../vm/README.md#real-codex-locally) for the container's sandbox configuration and switching modes.
 

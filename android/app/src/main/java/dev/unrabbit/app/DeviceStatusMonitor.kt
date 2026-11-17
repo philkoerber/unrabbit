@@ -16,8 +16,8 @@ import android.os.Looper
 import android.text.format.DateFormat
 
 enum class WifiStatus(val description: String) {
-    CONNECTED("WLAN verbunden"), LOCAL("WLAN verbunden, Internet nicht bestätigt"),
-    DISCONNECTED("WLAN nicht verbunden"), OFF("WLAN aus"), UNKNOWN("WLAN-Status unbekannt")
+    CONNECTED("Wi-Fi connected"), LOCAL("Wi-Fi connected, internet unverified"),
+    DISCONNECTED("Wi-Fi disconnected"), OFF("Wi-Fi off"), UNKNOWN("Wi-Fi status unknown")
 }
 
 data class DeviceStatus(

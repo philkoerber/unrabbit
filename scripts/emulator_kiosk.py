@@ -19,7 +19,7 @@ def run(*words):
     return result.stdout.strip()
 
 if run("shell", "getprop", "ro.kernel.qemu") != "1":
-    raise SystemExit("Nur für Emulatoren. Kein R1-Provisioning oder Werksreset durch dieses Werkzeug.")
+    raise SystemExit("For emulators only. This tool does not provision an r1 or perform factory resets.")
 package = "dev.unrabbit.app"
 admin = package + "/.UnrabbitAdminReceiver"
 home = package + "/.Home"
@@ -31,30 +31,30 @@ if args.action == "status":
     print("\n".join(line.strip() for line in state.splitlines() if "mLockTaskModeState" in line or "topResumedActivity" in line))
 elif args.action == "enable":
     if "TEST_ONLY" not in run("shell", "dumpsys", "package", package):
-        raise SystemExit("Zuerst die testOnly-Debug-APK mit adb install -t -r installieren. Sonst ist der Rückweg nicht gewährleistet.")
+        raise SystemExit("First install the testOnly debug APK with adb install -t -r so kiosk mode can be reversed.")
     if "no owners" not in owners.lower() and package not in owners:
-        raise SystemExit("Ein anderer Device Owner ist eingerichtet; unverändert gelassen.")
+        raise SystemExit("Another device owner is configured; left unchanged.")
     if "no owners" in owners.lower():
         original_home = run("shell", "cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME").splitlines()[-1]
         if "/" not in original_home or package in original_home:
-            raise SystemExit("Ursprünglicher Launcher nicht eindeutig; keine Änderungen.")
+            raise SystemExit("Original launcher is ambiguous; no changes made.")
         state_path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(state_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as stream:
             json.dump({"home": original_home}, stream)
         print(run("shell", "dpm", "set-device-owner", admin))
     elif not state_path.exists():
-        raise SystemExit("Device Owner bereits gesetzt, aber Launcher-Rückweg fehlt. Nicht weiter verändert.")
+        raise SystemExit("Device owner is already set, but launcher recovery is missing. No further changes made.")
     run("shell", "input", "keyevent", "224")
     run("shell", "am", "force-stop", package)
     print(run("shell", "am", "start", "-W", "-n", package + "/.MainActivity"))
-    print("Kiosk aktiviert. Rückweg: dieses Skript mit disable; ADB bleibt erhalten.")
+    print("Kiosk enabled. To reverse, run this script with disable; ADB remains available.")
 else:
     if not state_path.exists():
-        raise SystemExit("Kein gespeicherter Launcher-Rückweg. Keine Änderungen.")
+        raise SystemExit("No saved launcher recovery. No changes made.")
     original_home = json.loads(state_path.read_text())["home"]
     if "no owners" not in owners.lower() and package not in owners:
-        raise SystemExit("Fremder Device Owner; keine Änderungen.")
+        raise SystemExit("Another device owner is set; no changes made.")
     if package in owners:
         print(run("shell", "dpm", "remove-active-admin", admin))
     run("shell", "am", "task", "lock", "stop")
@@ -62,4 +62,4 @@ else:
     run("shell", "cmd", "package", "set-home-activity", original_home)
     run("shell", "am", "force-stop", package)
     state_path.unlink()
-    print("Kiosk entfernt, ursprünglicher Launcher wiederhergestellt. App-Daten bleiben erhalten.")
+    print("Kiosk removed and original launcher restored. App data is preserved.")

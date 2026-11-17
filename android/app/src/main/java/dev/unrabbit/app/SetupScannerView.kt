@@ -24,14 +24,14 @@ class SetupScannerView(context: Context, private val onResult: (PairingQr) -> Un
         textSize = 14f; setTextColor(0xfff2f0e8.toInt()); typeface = resources.getFont(R.font.plex_regular)
         gravity = Gravity.CENTER; accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_POLITE
         setPadding(dp(12), dp(8), dp(12), dp(8))
-        background = GradientDrawable().apply { setColor(0xcc171915.toInt()); cornerRadius = dp(8).toFloat() }
+        background = GradientDrawable().apply { setColor(android.graphics.Color.BLACK); cornerRadius = dp(8).toFloat() }
     }
     private val retry = Runnable { if (active && isAttachedToWindow) { status.visibility = GONE; decode() } }
     init {
         tag = "unrabbit-scanner"
         isClickable = true
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-        setBackgroundColor(0xff171915.toInt())
+        setBackgroundColor(android.graphics.Color.BLACK)
         preview.decoderFactory = DecoderFactory { hints -> Decoder(SetupQrReader(hints)) }
         preview.addStateListener(object : CameraPreview.StateListener {
             override fun previewSized() {}
@@ -46,7 +46,7 @@ class SetupScannerView(context: Context, private val onResult: (PairingQr) -> Un
         addView(status, LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
             leftMargin = dp(24); rightMargin = dp(24); bottomMargin = dp(24)
         })
-        addOverlayCloseControl("Scan abbrechen", onClose)
+        addOverlayCloseControl("Cancel scan", onClose)
     }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()
     private fun showError(message: Int) { status.setText(message); status.visibility = VISIBLE }

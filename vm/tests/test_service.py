@@ -14,6 +14,8 @@ from unrabbit_vm.server import Server, Worker
 from unrabbit_vm.store import MAX_BODY_BYTES, Problem, Store
 from unrabbit_vm.speech import SpeechService
 from test_speech import Backend, audio_request
+from unrabbit_vm.tts import TtsService
+from test_tts import TtsBackend
 
 
 def request(text="Eine Idee", photos=None):
@@ -140,11 +142,23 @@ class ServiceTests(unittest.TestCase):
                          self.call('POST', '/v1/speech/transcribe', body))
         self.assertEqual(0, self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0])
 
+    def test_reply_audio_uses_auth_identity_and_leaves_no_job_or_photo(self):
+        engine = TtsBackend(); self.server.tts = TtsService(engine)
+        body = {'text': 'Hello.', 'language': 'en'}
+        self.assertEqual(401, self.call('POST', '/v1/speech/synthesize', body, Authorization='Bearer wrong')[0])
+        self.assertEqual(409, self.call('POST', '/v1/speech/synthesize', body, **{'X-Unrabbit-Server': 'other'})[0])
+        self.assertEqual([], engine.calls)
+        status, result = self.call('POST', '/v1/speech/synthesize', body)
+        self.assertEqual(200, status)
+        self.assertEqual(engine.audio, base64.b64decode(result['audio']))
+        self.assertEqual(0, self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0])
+        self.assertEqual(0, self.store.db.execute('SELECT count(*) FROM photos').fetchone()[0])
+
     def test_real_http_round_trip_returns_result_after_client_disconnect(self):
         payload = request(photos=[photo()])
         self.assertEqual(200, self.call("POST", "/v1/jobs", payload)[0])
         result = self.wait_for(payload["id"], "completed")
-        self.assertIn("1 Bild", result["answer"])
+        self.assertIn("1 photo", result["answer"])
         self.assertEqual(payload["photos"][0]["id"], result["photos"][0]["id"])
         self.assertEqual(result, self.call("POST", "/v1/jobs", payload)[1])
 

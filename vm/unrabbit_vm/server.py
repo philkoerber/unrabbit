@@ -8,6 +8,7 @@ from socketserver import TCPServer
 from .agents import Cancelled
 from .store import MAX_BODY_BYTES, Problem, identifier
 from .speech import SpeechService
+from .tts import TtsService
 
 
 class Worker:
@@ -32,12 +33,12 @@ class Worker:
                 cancelled = lambda: self.stop.is_set() or self.store.get(job["id"])["state"] == "cancelled"
                 if cancelled():
                     raise Cancelled()
-                answer = self.agent.run(job, self.store.context(job["seq"]), cancelled)
+                answer = self.agent.run(job, self.store.context(job["seq"], photo_limit=4 - len(job["photos"])), cancelled)
                 self.store.finish(job["id"], answer=answer)
             except Cancelled:
-                self.store.finish(job["id"], error="Dienst gestoppt. Auftrag wurde nicht wiederholt.", interrupted=True)
+                self.store.finish(job["id"], error="Service stopped. The request was not retried.", interrupted=True)
             except Exception:
-                self.store.finish(job["id"], error="Agent-Aufruf fehlgeschlagen. Server-Konfiguration prüfen.")
+                self.store.finish(job["id"], error="Agent request failed. Check the server configuration.")
 
     def close(self):
         self.stop.set(); self.wake.set()
@@ -54,9 +55,10 @@ class Server(ThreadingHTTPServer):
         TCPServer.server_bind(self)
         self.server_name, self.server_port = self.server_address[:2]
 
-    def __init__(self, address, store, worker, token, server_id, speech=None):
+    def __init__(self, address, store, worker, token, server_id, speech=None, tts=None):
         self.store, self.worker, self.token, self.server_id = store, worker, token, server_id
         self.speech = speech or SpeechService()
+        self.tts = tts or TtsService()
         super().__init__(address, Handler)
 
 
@@ -85,9 +87,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise Problem(409, "Wrong server identity")
             if self.command == "GET" and self.path == "/v1/health":
                 result = {"version": 1, "agent": self.server.worker.agent.name, "serverId": self.server.server_id,
-                          "speech": self.server.speech.status}
+                          "speech": self.server.speech.status, "tts": self.server.tts.status}
             elif self.command == "POST" and self.path == "/v1/speech/transcribe":
                 result = self.server.speech.transcribe(self.body())
+            elif self.command == "POST" and self.path == "/v1/speech/synthesize":
+                result = self.server.tts.synthesize(self.body())
             elif self.command == "POST" and self.path == "/v1/jobs":
                 result = self.server.store.submit(self.body())
                 self.server.worker.wake.set()

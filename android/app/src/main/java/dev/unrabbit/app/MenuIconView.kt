@@ -13,10 +13,10 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 enum class MenuIcon(val label: String) {
-    SETTINGS("Einstellungen"), STOP("Alles anhalten"), CLOSE("Schließen"), SAVE("Speichern"), SCAN("Verbindung scannen")
+    SETTINGS("Settings"), STOP("Stop all"), CLOSE("Close")
 }
 
-/** Slightly asymmetric, soft-stroked marks from the same visual vocabulary as the logo. */
+/** Compact controls for the chat menu and camera overlays. */
 class MenuIconView @JvmOverloads constructor(context: Context, val icon: MenuIcon = MenuIcon.SETTINGS) : View(context) {
     var showSelectionDot = true
     private var selectionProgress = 0f
@@ -47,17 +47,7 @@ class MenuIconView @JvmOverloads constructor(context: Context, val icon: MenuIco
                 moveTo(7f, 6f); cubicTo(12f, 14f, 21f, 20f, 26f, 27f)
                 moveTo(26f, 6f); cubicTo(20f, 11f, 12f, 23f, 6f, 26f)
             }
-            MenuIcon.SAVE -> {
-                moveTo(5f, 16f); quadTo(9f, 19f, 13f, 25f)
-                cubicTo(17f, 18f, 23f, 10f, 28f, 6f)
-            }
-            MenuIcon.SCAN -> {
-                moveTo(4f, 12f); lineTo(4f, 5f); lineTo(11f, 4f)
-                moveTo(21f, 4f); lineTo(28f, 5f); lineTo(28f, 12f)
-                moveTo(28f, 21f); lineTo(28f, 28f); lineTo(21f, 29f)
-                moveTo(11f, 29f); lineTo(4f, 28f); lineTo(4f, 21f)
-                moveTo(10f, 16f); quadTo(16f, 14f, 23f, 16f)
-            }
+
         }
     }
 

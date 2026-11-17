@@ -5,13 +5,13 @@ import re
 
 def connection_payload(host, port, user, fingerprint=""):
     if not isinstance(host, str) or len(host) > 253 or host.startswith("-") or not re.fullmatch(r"[A-Za-z0-9._:%\[\]-]+", host):
-        raise ValueError("VM-Adresse als DNS-Name oder IP angeben, ohne URL oder Benutzer.")
+        raise ValueError("Enter a VM DNS name or IP address without a URL scheme or username.")
     if type(port) is not int or not 1 <= port <= 65535:
-        raise ValueError("Port muss zwischen 1 und 65535 liegen.")
+        raise ValueError("Port must be between 1 and 65535.")
     if not isinstance(user, str) or user == "root" or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user):
-        raise ValueError("Einen gültigen, unprivilegierten Linux-Benutzernamen verwenden.")
+        raise ValueError("Use a valid, unprivileged Linux username.")
     if not isinstance(fingerprint, str) or (fingerprint and not re.fullmatch(r"SHA256:[A-Za-z0-9+/]{43}", fingerprint)):
-        raise ValueError("Nur einen öffentlichen SHA256-Fingerabdruck angeben.")
+        raise ValueError("Enter only a public SHA256 fingerprint.")
     return {"type": "unrabbit.setup", "version": 1, "host": host, "port": port,
             "user": user, "hostKeyFingerprint": fingerprint}
 

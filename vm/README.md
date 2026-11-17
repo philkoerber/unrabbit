@@ -118,3 +118,9 @@ UNRABBIT_TEST_PYTHON="$PWD/../.venv-setup/bin/python" ./gradlew :core:test :app:
 ```
 
 The HTTP development service uses Python’s standard library. The SSH service and wizard additionally use AsyncSSH and the pinned QR dependency. Tests exercise HTTP authentication, persistence, retry conflicts, cancellation races, restart recovery, bounded context, image integrity and the agent boundary, plus setup validation, CLI detection, cancellation and repeated configuration. Android tests also exercise real loopback sockets, lifecycle suspension and outbox migration.
+
+## Local reply voices
+
+Piper 1.8.0 synthesizes English with Amy medium and German with Ramona low on the VM CPU. Install `requirements-speech.txt`, run `python scripts/unrabbit.py tts-setup` from the repository root with the service interpreter/account, then restart the service. Both voices and their model cards are revision- and SHA-256-pinned. `UNRABBIT_TTS_MODELS` can override the default XDG data directory. The Docker runtime includes the same setup.
+
+The app displays text immediately, reads it in bounded sections and prepares one next section during playback. Audio stays in memory, over the existing authenticated transport. Turning off **Vorlesen** or starting another recording cancels playback; old replies are not replayed after restart. Missing synthesis leaves chat usable. No hosted voice provider or speech key is needed. See [protocol](../docs/PROTOCOL.md) and [model attribution](../THIRD_PARTY_NOTICES.md).

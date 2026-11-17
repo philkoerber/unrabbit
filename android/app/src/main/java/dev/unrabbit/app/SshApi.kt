@@ -8,10 +8,10 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.Base64
 
-internal class HostIdentityFailure : IOException("Server-Identität geändert. Verbindung blockiert.")
+internal class HostIdentityFailure : IOException("Server identity changed. Connection blocked.")
 internal class PairingFailure(message: String) : IOException(message)
-internal class DeviceAuthorizationFailure : IOException("Gerät nicht mehr berechtigt. VM erneut per QR verbinden.")
-internal class VmProtocolFailure : IOException("Ungültige VM-Antwort. VM-Dienst prüfen.")
+internal class DeviceAuthorizationFailure : IOException("Device no longer authorized. Pair the VM again by QR.")
+internal class VmProtocolFailure : IOException("Invalid VM response. Check the VM service.")
 
 internal class PinnedHost(private val fingerprint: String) : HostKeyRepository {
     var rejected = false
@@ -62,9 +62,9 @@ internal class SshApi(private val vm: PairedVm, private val privateKey: () -> By
             if (pin.rejected) throw HostIdentityFailure()
             if (error is JSchException && error.message.orEmpty().startsWith("Auth fail")) {
                 if (password == null) throw DeviceAuthorizationFailure()
-                throw PairingFailure("Kopplungscode abgelaufen oder verwendet. Neuen QR scannen.")
+                throw PairingFailure("Pairing token expired or already used. Scan a new QR.")
             }
-            throw IOException("SSH-Verbindung fehlgeschlagen.", error)
+            throw IOException("SSH connection failed.", error)
         }
     }
 
@@ -74,7 +74,7 @@ internal class SshApi(private val vm: PairedVm, private val privateKey: () -> By
             verifyHealth()
             return
         } catch (_: DeviceAuthorizationFailure) { disconnect() }
-        if (System.currentTimeMillis() / 1000 >= invitation.expiresAt) throw PairingFailure("QR abgelaufen. Bitte erneut scannen.")
+        if (System.currentTimeMillis() / 1000 >= invitation.expiresAt) throw PairingFailure("QR expired. Scan again.")
         val bytes = privateKey()
         val public = try {
             val key = KeyPair.load(JSch(), bytes, null)
@@ -85,7 +85,7 @@ internal class SshApi(private val vm: PairedVm, private val privateKey: () -> By
         try {
             val result = execute(session, "unrabbit-pair", JSONObject().put("serverId", vm.serverId).put("publicKey", public))
             if (result.first != 200 || result.second.optString("serverId") != vm.serverId)
-                throw PairingFailure("Kopplungscode abgelaufen oder verwendet. Neuen QR scannen.")
+                throw PairingFailure("Pairing token expired or already used. Scan a new QR.")
         } finally { disconnect() }
         verifyHealth() // A successful scan is not enough: prove possession of the new device key.
     }
@@ -93,14 +93,14 @@ internal class SshApi(private val vm: PairedVm, private val privateKey: () -> By
     fun verifyHealth() {
         val result = request("GET", "/v1/health", null)
         if (result.first != 200 || result.second.optString("serverId") != vm.serverId)
-            throw PairingFailure("VM antwortet nicht wie erwartet.")
+            throw PairingFailure("Unexpected VM response.")
     }
 
     override fun request(method: String, path: String, body: JSONObject?): Pair<Int, JSONObject> {
         if (suspended) throw IOException("Paused")
         val session = active?.takeIf { it.isConnected } ?: connect()
         return try {
-            session.timeout = if (path == "/v1/speech/transcribe") 45_000 else 15_000
+            session.timeout = if (path.startsWith("/v1/speech/")) 45_000 else 15_000
             execute(session, "unrabbit-api", JSONObject().put("serverId", vm.serverId)
             .put("method", method).put("path", path).put("body", body ?: JSONObject.NULL)) }
         catch (error: Exception) {
@@ -108,7 +108,7 @@ internal class SshApi(private val vm: PairedVm, private val privateKey: () -> By
             when (error) {
                 is IOException -> throw error
                 is JSONException -> throw VmProtocolFailure()
-                else -> throw IOException("SSH-Verbindung unterbrochen.", error)
+                else -> throw IOException("SSH connection interrupted.", error)
             }
         }
     }

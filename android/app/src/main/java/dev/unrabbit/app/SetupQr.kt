@@ -8,19 +8,19 @@ class PairingQr(val connection: ConnectionSettings, val serverId: String, val to
     override fun toString() = "PairingQr(redacted)"
 }
 
-internal class ExpiredSetupQr : IllegalArgumentException("Einrichtungs-QR abgelaufen.")
+internal class ExpiredSetupQr : IllegalArgumentException("Setup QR expired.")
 
 /** Only complete, expiring pairing invitations are accepted. No manual connection drafts. */
 object SetupQr {
     fun parse(raw: String, now: Long = System.currentTimeMillis() / 1000): PairingQr {
-        require(raw.toByteArray(Charsets.UTF_8).size <= 4096) { "Einrichtungs-QR ist zu groß." }
+        require(raw.toByteArray(Charsets.UTF_8).size <= 4096) { "Setup QR is too large." }
         val reader = JSONTokener(raw)
         val fields = linkedMapOf<String, Any>()
         val allowed = setOf("type", "version", "host", "port", "user", "hostKeyFingerprint", "serverId", "pairingToken", "expiresAt")
-        require(reader.nextClean() == '{') { "Kein Unrabbit-Einrichtungs-QR." }
+        require(reader.nextClean() == '{') { "Not an Unrabbit setup QR." }
         do {
             val key = reader.nextValue()
-            require(key is String && key in allowed && key !in fields) { "Unbekannte oder doppelte QR-Felder." }
+            require(key is String && key in allowed && key !in fields) { "Unknown or duplicate QR fields." }
             require(reader.nextClean() == ':')
             fields[key] = reader.nextValue()
             val next = reader.nextClean()
@@ -28,20 +28,20 @@ object SetupQr {
             require(next == ',')
         } while (true)
         require(reader.nextClean() == '\u0000' && fields.keys == allowed)
-        require(fields["type"] == "unrabbit.setup" && fields["version"] == 2) { "Bitte einen neuen QR im VM-Wizard erstellen." }
+        require(fields["type"] == "unrabbit.setup" && fields["version"] == 2) { "Create a new QR in the VM wizard." }
         require(fields["host"] is String && fields["user"] is String && fields["port"] is Int)
         val connection = ConnectionSettings(fields["host"] as String, fields["port"] as Int, fields["user"] as String,
             fields["hostKeyFingerprint"] as? String ?: "")
         require(connection.validationError() == null && connection.hostKeyFingerprint.isNotBlank() && !connection.host.startsWith("-"))
-        val serverId = fields["serverId"] as? String ?: error("Server-ID fehlt.")
+        val serverId = fields["serverId"] as? String ?: error("Server ID missing.")
         require(UUID.fromString(serverId).toString() == serverId)
-        val token = fields["pairingToken"] as? String ?: error("Kopplungscode fehlt.")
+        val token = fields["pairingToken"] as? String ?: error("Pairing token missing.")
         require(Regex("[A-Za-z0-9_-]{43}").matches(token))
         val expires = fields["expiresAt"]
         require(expires is Int || expires is Long)
         val expiry = (expires as Number).toLong()
         if (expiry <= now) throw ExpiredSetupQr()
-        require(expiry <= now + 900) { "QR-Zeit passt nicht zur Gerätezeit." }
+        require(expiry <= now + 900) { "QR time does not match the device clock." }
         return PairingQr(connection, serverId, token, expiry)
     }
 }

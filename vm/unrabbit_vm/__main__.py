@@ -50,6 +50,9 @@ def service_arguments(argv):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "tts-setup":
+        from .tts import setup
+        return setup(argv[1:])
     if argv and argv[0] == "speech-setup":
         from .speech import setup
         return setup(argv[1:])
@@ -85,7 +88,8 @@ def main(argv=None):
         worker = Worker(store, agent)
         try:
             from .speech import configured_speech
-            server = Server((args.listen, args.port), store, worker, config["token"], config["serverId"], configured_speech())
+            from .tts import configured_tts
+            server = Server((args.listen, args.port), store, worker, config["token"], config["serverId"], configured_speech(), configured_tts())
         except OSError:
             store.close()
             parser.error(f"Cannot bind {args.listen}:{args.port}. Check whether another service is running.")

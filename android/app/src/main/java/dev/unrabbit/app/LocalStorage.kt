@@ -8,6 +8,7 @@ import org.json.JSONObject
 import java.io.File
 
 class LocalStorage(context: Context) {
+    private val photoDirectory = File(context.noBackupFilesDir, "photos")
     private val file = AtomicFile(File(context.noBackupFilesDir, "demo-stream.json"))
     private val legacyFile = AtomicFile(File(context.noBackupFilesDir, "demo-chats.json"))
     val preferences = context.getSharedPreferences("unrabbit-development", Context.MODE_PRIVATE)
@@ -34,7 +35,7 @@ class LocalStorage(context: Context) {
                     oldestFirst.filter { it.getString("id") == currentId })
                     .flatMap { readMessages(it.getJSONArray("messages"), legacy = true) }
             } else {
-                require(root.getInt("version") in 2..4)
+                require(root.getInt("version") in 2..5)
                 readMessages(root.getJSONArray("messages"))
             }
             require(items.map { it.id }.distinct().size == items.size)
@@ -64,7 +65,8 @@ class LocalStorage(context: Context) {
         } else if (message.has("requestId")) message.getString("requestId") else null
         val photos = message.optJSONArray("photos")?.let { array ->
             (0 until array.length()).map { i -> array.getJSONObject(i).let {
-                PhotoAttachment(it.getString("id"), it.getInt("width"), it.getInt("height"))
+                val photo = PhotoAttachment(it.getString("id"), it.getInt("width"), it.getInt("height"), it.optLong("capturedAt"))
+                if (photo.capturedAt > 0) photo else photo.copy(capturedAt = File(photoDirectory, "${photo.id}.jpg").lastModified())
             } }
         }.orEmpty()
         Message(id, role, message.getString("text"), requestId, photos)
@@ -74,11 +76,12 @@ class LocalStorage(context: Context) {
         val messages = JSONArray()
         snapshot.messages.forEach { message ->
             val photos = JSONArray()
-            message.photos.forEach { photos.put(JSONObject().put("id", it.id).put("width", it.width).put("height", it.height)) }
+            message.photos.forEach { photos.put(JSONObject().put("id", it.id).put("width", it.width).put("height", it.height)
+                .put("capturedAt", it.capturedAt)) }
             messages.put(JSONObject().put("id", message.id).put("role", message.role.name)
                 .put("text", message.text).put("requestId", message.requestId).put("photos", photos))
         }
-        val data = JSONObject().put("version", 4).put("hadPending", snapshot.hadPending)
+        val data = JSONObject().put("version", 5).put("hadPending", snapshot.hadPending)
             .put("pendingRequestIds", JSONArray(snapshot.pendingRequestIds)).put("backendId", snapshot.backendId)
             .put("messages", messages).toString().toByteArray()
         val stream = file.startWrite()

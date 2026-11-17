@@ -15,6 +15,8 @@ from unrabbit_vm.server import Worker
 from unrabbit_vm.store import Store
 from unrabbit_vm.speech import SpeechService
 from test_speech import Backend, audio_request
+from unrabbit_vm.tts import TtsService
+from test_tts import TtsBackend
 
 
 class SshTests(unittest.IsolatedAsyncioTestCase):
@@ -158,6 +160,21 @@ class SshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0])
 
 
+    async def test_reply_audio_is_available_only_after_device_key_enrollment(self):
+        engine = TtsBackend(); self.gateway.tts = TtsService(engine)
+        payload = self.request('POST', '/v1/speech/synthesize', {'text': 'Guten Morgen.', 'language': 'de'})
+        async with await self.connect(password=self.invite['pairingToken']) as client:
+            self.assertEqual(403, (await self.rpc(client, 'unrabbit-api', payload))['status'])
+        self.assertEqual([], engine.calls)
+        await self.enroll()
+        async with await self.connect(key=self.device) as client:
+            result = await self.rpc(client, 'unrabbit-api', payload)
+            self.assertEqual(200, result['status'])
+            self.assertEqual('aac-mp4', result['body']['format'])
+            self.assertEqual('de', result['body']['language'])
+        self.assertEqual(0, self.store.db.execute('SELECT count(*) FROM jobs').fetchone()[0])
+
+
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_wizard_runtime_is_live_before_qr_and_cleans_up_on_stop(self):
         import socket
@@ -178,7 +195,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                 invitation = None
                 def step(self, *_): pass
                 def line(self, text):
-                    if 'Verbunden.' in text: self.paired.set()
+                    if 'Connected.' in text: self.paired.set()
                 async def live_qr(self, qr, png):
                     self.invitation = json.loads(b''.join(part.data for part in qr.data_list))
                     self.ready.set()
