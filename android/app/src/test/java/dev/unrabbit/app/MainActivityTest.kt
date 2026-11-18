@@ -533,6 +533,27 @@ class MainActivityTest {
         next.pause().stop().destroy()
     }
 
+    @Test fun formattedRepliesKeepRawHistoryAndLiteralUserMessagesAcrossRestart() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val raw = "See [the **artwork**](https://example.com/long_(path))."
+        val literal = "What does snake_case * 2 mean?"
+        val snapshot = dev.unrabbit.core.SessionSnapshot(listOf(
+            dev.unrabbit.core.Message("user", dev.unrabbit.core.Role.USER, literal),
+            dev.unrabbit.core.Message("reply", dev.unrabbit.core.Role.ASSISTANT, raw)))
+        LocalStorage(context).save(snapshot)
+        LocalStorage(context).preferences.edit().putBoolean("demoAcknowledged", true).commit()
+        repeat(2) {
+            val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+            val texts = views(controller.get()).filterIsInstance<TextView>()
+            val reply = texts.single { it.text.toString() == "See the artwork." }
+            assertEquals("Unrabbit: See the artwork.", reply.contentDescription)
+            assertFalse(reply.isClickable || reply.isFocusable)
+            assertTrue(texts.any { it.text.toString() == literal })
+            assertEquals(snapshot.messages, LocalStorage(context).load()!!.messages)
+            controller.pause().stop().destroy()
+        }
+    }
+
     @Test fun deniedMicrophoneDoesNotSubmitTextOrConsumePhotoDrafts() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()

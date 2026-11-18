@@ -13,7 +13,7 @@
   <img src="docs/assets/settings.png" width="220" alt="Unrabbit settings with QR configuration and orange wheel selection">
 </p>
 
-**Early prototype.** The native Android app connects to an Ubuntu VM through QR-based SSH pairing. Android 14, kiosk mode, in-app Wi-Fi, pairing and real VM replies have been checked on an r1; broader transport/photo coverage also runs in an emulator. Speech recognition uses Whisper `base` on your VM, with a live microphone → transcription → chat reply test confirmed on the r1. Reply audio now uses Piper on the VM; the device owner confirmed that the English/German test voices are easy to understand. Broader hardware checks and stock recovery remain in progress. The interface is in English; speech input and reply audio support English and German. The screenshots show the simplified layout in the 480 × 640 emulator. An in-place r1 update on 2026-11-18 also verified the logo-free layout, menu navigation and VM health after sleep/wake, with existing pairing and chat history preserved. See the [scope of the hardware check](docs/STATUS.md#checked-in-the-app).
+**Early prototype.** The native Android app connects to an Ubuntu VM through QR-based SSH pairing. Android 14, kiosk mode, in-app Wi-Fi, pairing and real VM replies have been checked on an r1; broader transport/photo coverage also runs in an emulator. Speech recognition uses Whisper `base` on your VM, with a live microphone → transcription → chat reply test confirmed on the r1. Reply audio now uses Piper on the VM; the device owner confirmed that the English/German test voices are easy to understand. Broader hardware checks and stock recovery remain in progress. The interface is in English; speech input and reply audio support English and German. The screenshots show the simplified layout in the 480 × 640 emulator. In-place r1 updates on 2026-11-18 verified the logo-free layout, menu navigation and VM health after sleep/wake. The 0.17.0-dev update also checks readable Markdown replies and the microphone-ready tone, with existing pairing and chat history preserved. See the [scope of the hardware check](docs/STATUS.md#checked-in-the-app).
 
 ## The idea
 
@@ -32,6 +32,8 @@ The prototype already has:
 - Wheel/button navigation, dark mode and a shared battery, clock, Wi-Fi and verified VM status rail across chat and settings.
 - Animated wheel scrolling in chat, with up to 3× travel when turning quickly, precise slow ticks, immediate direction changes and touch takeover. Automated checks cover acceleration and these transitions; physical-wheel feel still needs confirmation.
 - A black lock screen with a centered clock, three status icons and quiet transitions; no background logo.
+- Readable Markdown replies: link labels, emphasis, lists and code, with the original message preserved.
+- A short recording-ready tone after the microphone starts; silent/vibrate mode and muted media stay silent.
 - Local photo drafts that accompany the next spoken request.
 - Push-to-talk, English/German selection, compressed audio upload, VM transcription and cancellation without submitting a chat request.
 - VM-generated reply audio with default-on playback, interruption and a persistent settings toggle.

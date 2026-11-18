@@ -9,8 +9,8 @@ android {
         applicationId = "dev.unrabbit.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 26
-        versionName = "0.16.0-dev"
+        versionCode = 27
+        versionName = "0.17.0-dev"
         testInstrumentationRunner = "dev.unrabbit.app.SetupQrDeviceProbe"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -26,6 +26,7 @@ android {
 }
 dependencies {
     implementation(project(":core"))
+    implementation("org.commonmark:commonmark:0.32.0")
     implementation("com.github.mwiede:jsch:2.28.8")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     // Keep the verified SDK-35 camera stack pinned; upgrading it is a separate compatibility check.

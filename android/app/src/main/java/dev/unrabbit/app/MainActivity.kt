@@ -187,7 +187,7 @@ class MainActivity : Activity() {
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
-    private fun text(value: String, size: Float = 20f, muted: Boolean = false) = TextView(this).apply {
+    private fun text(value: CharSequence, size: Float = 20f, muted: Boolean = false) = TextView(this).apply {
         text = value
         setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         setTextColor(if (muted) mutedColor else inkColor)
@@ -299,10 +299,11 @@ class MainActivity : Activity() {
                     leftMargin = dp(28); bottomMargin = dp(24)
                 })
             }
-            if (message.text.isNotEmpty()) messages.addView(text(message.text, if (message.role == Role.USER) 20f else 22f, message.role == Role.USER).apply {
+            val displayed = if (message.role == Role.ASSISTANT) ChatMarkdown.render(message.text) else message.text
+            if (message.text.isNotEmpty()) messages.addView(text(displayed, if (message.role == Role.USER) 20f else 22f, message.role == Role.USER).apply {
                 gravity = if (message.role == Role.USER) Gravity.END else Gravity.START
                 setPadding(if (message.role == Role.USER) dp(28) else 0, 0, 0, dp(24))
-                contentDescription = "${if (message.role == Role.USER) "You" else "Unrabbit"}: ${message.text}"
+                contentDescription = "${if (message.role == Role.USER) "You" else "Unrabbit"}: $displayed"
                 isFocusable = false
                 isClickable = false
             }, LinearLayout.LayoutParams(-1, -2))

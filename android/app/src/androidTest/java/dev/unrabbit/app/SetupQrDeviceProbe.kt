@@ -9,10 +9,12 @@ import java.io.File
 class SetupQrDeviceProbe : Instrumentation() {
     private var speech = false
     private var replyAudio = false
+    private var chatUx = false
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
         speech = arguments?.getString("probe") == "speech"
         replyAudio = arguments?.getString("probe") == "reply-audio"
+        chatUx = arguments?.getString("probe") == "chat-ux"
         start()
     }
 
@@ -20,6 +22,11 @@ class SetupQrDeviceProbe : Instrumentation() {
         val report = Bundle()
         var code = Activity.RESULT_OK
         try {
+            if (chatUx) {
+                ChatUxDeviceCheck.run(this, report)
+                finish(code, report)
+                return
+            }
             if (replyAudio) {
                 ReplyDeviceCheck.run(this, report)
                 finish(code, report)

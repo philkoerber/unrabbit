@@ -57,7 +57,7 @@ The same compact status rail is visible in chat, settings and network setup. Its
 | --- | --- |
 | ↑ / ↓ | Scroll chat or choose a menu item |
 | ← briefly | Leave the rest screen, open the chat menu or confirm a selection |
-| Hold ←, speak after listening starts, then release | Record, upload compressed audio to the VM and submit its transcript |
+| Hold ←, speak after the ready tone (or “Listening…” when muted), then release | Record, upload compressed audio to the VM and submit its transcript |
 | ↑ / ↓ while holding ← | Cancel speech without submitting |
 | ← briefly or Back while transcribing | Discard the pending transcript |
 | Double-press ← within 300 ms | Open the photo camera from chat or rest |

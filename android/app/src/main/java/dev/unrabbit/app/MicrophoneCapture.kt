@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.SystemClock
 import java.util.concurrent.Future
 import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicBoolean
@@ -20,7 +21,8 @@ internal class RecordingTooLong : Exception()
 
 /** Foreground push-to-talk only. At most 30 seconds, kept in memory and never written to disk. */
 @SuppressLint("MissingPermission") // Checked before constructing AudioRecord; revocation is handled as a capture error.
-internal class MicrophoneCapture(context: Context, onEnd: () -> Unit) : SpeechCapture {
+internal class MicrophoneCapture(context: Context, onEnd: () -> Unit,
+    private val cue: RecordingCue = ReadyTone(context)) : SpeechCapture {
     private val running = AtomicBoolean(true)
     private val discard = AtomicBoolean(false)
     private val recorder: AudioRecord
@@ -34,11 +36,16 @@ internal class MicrophoneCapture(context: Context, onEnd: () -> Unit) : SpeechCa
             .setAudioFormat(AudioFormat.Builder().setSampleRate(16_000).setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
             .setBufferSizeInBytes(maxOf(minimum * 2, 6400)).build()
+        val leadIn: RecordingLeadIn
         try {
             check(recorder.state == AudioRecord.STATE_INITIALIZED)
             recorder.startRecording()
             check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING)
-        } catch (failure: Exception) { recorder.release(); throw failure }
+            val recordingStart = SystemClock.elapsedRealtime()
+            val guardMillis = cue.play()
+            val skipMillis = if (guardMillis > 0) SystemClock.elapsedRealtime() - recordingStart + guardMillis else 0
+            leadIn = RecordingLeadIn((skipMillis * 16).toInt())
+        } catch (failure: Exception) { cue.close(); recorder.release(); throw failure }
         result = FutureTask {
             val samples = FloatArray(30 * 16_000)
             val buffer = ShortArray(1600)
@@ -49,12 +56,13 @@ internal class MicrophoneCapture(context: Context, onEnd: () -> Unit) : SpeechCa
                     val count = recorder.read(buffer, 0, minOf(buffer.size, samples.size - size), AudioRecord.READ_BLOCKING)
                     if (count < 0) { check(!running.get()) { "Microphone read failed" }; break }
                     if (count == 0) { check(!running.get()) { "Microphone returned no data" }; break }
-                    repeat(count) { samples[size++] = buffer[it] / 32768f }
+                    for (index in leadIn.skip(count) until count) samples[size++] = buffer[index] / 32768f
                 }
                 if (size == samples.size && running.get()) throw RecordingTooLong()
                 if (discard.get()) FloatArray(0) else samples.copyOf(size)
             } finally {
                 running.set(false)
+                cue.close()
                 runCatching { recorder.stop() }
                 recorder.release()
                 samples.fill(0f); buffer.fill(0)
@@ -65,6 +73,7 @@ internal class MicrophoneCapture(context: Context, onEnd: () -> Unit) : SpeechCa
     }
     override fun finish(): Future<FloatArray> {
         running.set(false)
+        cue.close()
         runCatching { recorder.stop() }
         return result
     }

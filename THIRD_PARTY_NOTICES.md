@@ -13,6 +13,8 @@ Upstream: [IBM Plex](https://github.com/IBM/plex), [Gradle](https://github.com/g
 
 ## Resolved by the build
 
+Android chat formatting uses [commonmark-java 0.32.0](https://github.com/commonmark/commonmark-java/tree/commonmark-parent-0.32.0), under BSD 2-Clause. Its [license](android/app/src/main/assets/CommonMark-LICENSE.txt) is included in the APK assets. Only its core parser is used; displayed links and image labels do not fetch external content.
+
 VM speech uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [CTranslate2](https://github.com/OpenNMT/CTranslate2), PyAV and their dependencies, installed from `vm/requirements-speech.txt`. The multilingual [Whisper base conversion](https://huggingface.co/Systran/faster-whisper-base) is downloaded at a pinned revision by `speech-setup`; faster-whisper includes Silero VAD. These packages and models retain their upstream licenses. No speech weights or native recognition binaries are bundled in the Android APK or checked into this repository.
 
 Reply synthesis uses [Piper 1.8.0](https://github.com/OHF-Voice/piper1-gpl/tree/v1.8.0), under **GPL-3.0-or-later**, with bundled eSpeak NG and separately resolved ONNX Runtime/PyAV dependencies. These are VM dependencies, not Android binaries or MIT-licensed project content. Distributions of these dependencies must retain their upstream licenses and applicable source obligations.

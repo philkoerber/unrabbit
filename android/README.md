@@ -17,7 +17,7 @@ Native Kotlin, Android Views and Canvas. No Compose or WebView. Start with the [
 | Minimum SDK | 28 |
 | JDK | 17 or 21; CI uses 21 |
 
-The minimum SDK is an app requirement, not a statement about supported r1 firmware. The development build is `0.16.0-dev`, marked `testOnly`, and uses a local debug signing key. No app-owned native speech library, NDK or CMake is required.
+The minimum SDK is an app requirement, not a statement about supported r1 firmware. The development build is `0.17.0-dev`, marked `testOnly`, and uses a local debug signing key. No app-owned native speech library, NDK or CMake is required.
 
 The app contains no speech model. It records through Android's microphone API, compresses with the platform AAC encoder and asks the paired VM to transcribe. The VM needs the separate [speech setup](../SETUP.md#3-prepare-your-ubuntu-vm).
 
@@ -33,6 +33,8 @@ The app contains no speech model. It records through Android's microphone API, c
 - `PairingView`: direct scan, connection progress and retry, returning to its caller on cancellation; no manual connection fields.
 - `PairingStore` / `SshApi` / `VmTransport`: encrypted device identity, pinned SSH enrollment and the persistent request outbox.
 - `StatusRailView`: centered lock-screen clock and battery, Wi-Fi and VM icons that compact into the chat margin.
+- `ChatMarkdown`: CommonMark parsing to native text spans, with label-only links and unchanged persisted messages.
+- `ReadyTone`: a 70 ms media cue after verified microphone startup, suppressed for silent/vibrate/muted media; its startup and a 150 ms lead-in are discarded from captured samples. Capture end/cancellation releases the tone.
 - `SpeechInput` / `MicrophoneCapture`: foreground push-to-talk, bounded PCM capture and cancellation-safe turn delivery.
 - `SpeechAudioEncoder` / `VmSpeechRecognizer`: in-memory AAC-LC compression and an ephemeral authenticated VM speech request.
 - `SpeechPreferences` / `SpeechLanguageView`: persistent English/German selection and read-aloud preference.
