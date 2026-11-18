@@ -5,7 +5,7 @@ Unrabbit starts with a small Android frontend and a locally testable Ubuntu serv
 ## Working in the emulator
 
 - [x] One continuous chat, with no conversation management or typing.
-- [x] Wheel/button navigation, a morphing logo and live device status.
+- [x] Wheel/button navigation, a logo-free black rest screen and live device status.
 - [x] Local photo drafts that join the next spoken request.
 - [x] QR-only setup with automatic SSH enrollment and verification.
 - [x] Reversible emulator kiosk setup, persistent local data and automated tests.

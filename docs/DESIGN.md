@@ -16,4 +16,4 @@ One conversation, simple menus and a black background. Most interaction happens 
 
 IBM Plex Sans provides the type. Only navigation, selection and scrolling animate; disabled system animations are respected.
 
-Earlier app and network layouts were checked on the r1 at 480 × 640 pixels, density 240. The simplified English interface still needs a fresh physical-device check.
+The simplified English interface was checked on the physical r1 on 2026-11-18 at 480 × 640 pixels, density 240: the logo-free rest screen, chat, settings and network page render correctly, and menu/back navigation works with ADB-injected keys. Physical-wheel feel and a fresh spoken request were not exercised in this UI check.
